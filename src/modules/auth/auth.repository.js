@@ -6,11 +6,11 @@ const findByEmail = async (email) => {
 };
 
 const createUser = async (userData) => {
-    const { email, passwordHash, fullName, monthlyPrice, verificationToken } = userData;
+    const { email, passwordHash, fullName, monthlyPrice, verificationToken, profileImageUrl } = userData;
     const { rows } = await db.query(
-        `INSERT INTO users (email, password_hash, full_name, monthly_price, verification_token) 
-         VALUES ($1, $2, $3, $4, $5) RETURNING id, email, full_name, role`,
-        [email, passwordHash, fullName, monthlyPrice, verificationToken]
+        `INSERT INTO users (email, password_hash, full_name, monthly_price, verification_token, profile_image_url) 
+         VALUES ($1, $2, $3, $4, $5, $6) RETURNING id, email, full_name, role`,
+        [email, passwordHash, fullName, monthlyPrice, verificationToken, profileImageUrl]
     );
     return rows[0];
 };

@@ -4,10 +4,6 @@ const { setTokens, clearTokens } = require('../../utils/cookie.util');
 
 const register = async (req, res, next) => {
     try {
-        if (!req.file) {
-            return res.status(400).json({ error: 'Profile image is required for registration' });
-        }
-        
         const parsedBody = registerSchema.parse(req.body);
         const fileBuffer = req.file.buffer;
 
