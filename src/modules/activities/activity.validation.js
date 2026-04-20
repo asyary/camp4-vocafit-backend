@@ -5,7 +5,7 @@ const createActivitySchema = z.object({
 });
 
 const updateActivitySchema = z.object({
-    taskName: z.string().min(2).optional(),
+    taskName: z.string().min(2, "Task name must be at least 2 characters long").optional(),
     isCompleted: z.boolean().optional()
 });
 
