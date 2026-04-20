@@ -13,7 +13,7 @@ const createTransactionSchema = z.object({
 });
 
 const confirmCashSchema = z.object({
-    transactionId: z.string().uuid(),
+    transactionId: z.uuid(),
     status: z.enum(['SUCCESS', 'FAILED'])
 });
 
