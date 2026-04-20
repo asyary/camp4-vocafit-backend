@@ -16,7 +16,7 @@ const sendVerificationEmail = async (to, name, token) => {
         from: '"Vocafit" <no-reply@vocafit.id>',
         to,
         subject: 'Verify your Vocafit Account',
-        html: `<p>Hi, ${name},</p><p>Click <a href="${link}">here</a> to verify your account.</p>`
+        html: `<p>Hi, ${name}.</p><p>Click <a href="${link}">here</a> to verify your Vocafit account.</p>`
     });
 };
 
