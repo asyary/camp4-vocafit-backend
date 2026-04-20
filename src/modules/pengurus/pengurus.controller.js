@@ -1,5 +1,5 @@
 const service = require('./pengurus.service');
-const { newsSchema, trainerSchema, scheduleSchema, updateUserSchema } = require('./pengurus.validation');
+const { newsSchema, trainerSchema, scheduleSchema, updateUserSchema, imageSchema } = require('./pengurus.validation');
 const { paginationSchema } = require('../../utils/validation.util');
 const { uploadToCloudinary } = require('../../utils/cloudinary.util');
 const db = require('../../config/db');
@@ -94,8 +94,10 @@ const updateUser = async (req, res) => {
 const updateUserImage = async (req, res) => {
     try {
         if (!req.file) throw new Error('New image file is required');
+
+		const parsedFile = imageSchema.parse(req.file);
         
-        const imageUrl = await uploadToCloudinary(req.file.buffer, 'users');
+        const imageUrl = await uploadToCloudinary(parsedFile.buffer, 'users');
         
         const { rows } = await db.query(
             'UPDATE users SET profile_image_url = $1 WHERE id = $2 RETURNING id, full_name, profile_image_url',
