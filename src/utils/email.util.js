@@ -10,13 +10,13 @@ const transporter = nodemailer.createTransport({
     },
 });
 
-const sendVerificationEmail = async (to, token) => {
+const sendVerificationEmail = async (to, name, token) => {
     const link = `${process.env.CLIENT_URL}/api/auth/verify-email/${token}`;
     await transporter.sendMail({
         from: '"Vocafit" <no-reply@vocafit.id>',
         to,
         subject: 'Verify your Vocafit Account',
-        html: `<p>Click <a href="${link}">here</a> to verify your account.</p>`
+        html: `<p>Hi, ${name},</p><p>Click <a href="${link}">here</a> to verify your account.</p>`
     });
 };
 

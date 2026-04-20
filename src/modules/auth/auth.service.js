@@ -10,6 +10,7 @@ const determinePricing = async (email) => {
 
     if (email.endsWith('unesa.ac.id')) {
         try {
+			// Don't ask where I got this API endpoint from :D
             const response = await fetch(`https://sso.unesa.ac.id/api/profil/email/${email}`);
             const resData = await response.json();
             
@@ -51,7 +52,7 @@ const register = async (data, fileBuffer) => {
         profileImageUrl
     });
 
-    await sendVerificationEmail(user.email, verificationToken);
+    await sendVerificationEmail(user.email, user.full_name, verificationToken);
     return user;
 };
 
