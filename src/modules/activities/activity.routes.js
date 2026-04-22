@@ -1,10 +1,12 @@
 const express = require('express');
 const controller = require('./activity.controller');
-const { requireAuth } = require('../../middlewares/auth.middleware');
+const { requireAuth, requireRole, requireMembership } = require('../../middlewares/auth.middleware');
 
 const router = express.Router();
 
 router.use(requireAuth);
+router.use(requireRole('member'));
+router.use(requireMembership);
 
 router.post('/', controller.createActivity);
 router.get('/', controller.getActivities);
