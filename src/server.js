@@ -15,8 +15,10 @@ const pengurusRoutes = require('./modules/pengurus/pengurus.routes');
 const activityRoutes = require('./modules/activities/activity.routes');
 const userRoutes = require('./modules/users/user.routes');
 const { initCronJobs } = require('./cron/penalty.cron');
+const responseHandler = require('./middlewares/response.middleware');
 
 const app = express();
+app.use(responseHandler);
 
 initCronJobs();
 
@@ -44,19 +46,11 @@ app.use('/api/users', userRoutes);
 // Global Error Handler
 app.use((err, req, res, next) => {
 	if (err instanceof ZodError) {
-		return res.status(400).json({
-			success: false,
-			message: "Invalid Input",
-			data: err.flatten().fieldErrors // Simplifies the Zod error structure
-		});
+		return res.error('Validation Error', 400, err.flatten().fieldErrors);
 	}
 
 	// Handle other types of errors
-	res.status(err.status || 500).json({
-		success: false,
-		message: err.message || "Internal Server Error",
-		data: null
-	});
+	res.error(err.message || 'Internal Server Error', err.status || 500, err.data || null);
 });
 
 const PORT = process.env.PORT || 8080;

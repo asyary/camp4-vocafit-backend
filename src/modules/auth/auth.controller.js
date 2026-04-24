@@ -8,7 +8,7 @@ const register = async (req, res, next) => {
         const fileBuffer = req.file.buffer;
 
         await authService.register(parsedBody, fileBuffer);
-        res.status(201).json({ message: 'Registration successful. Please check your email to verify.' });
+        res.success(null, 'Registration successful. Please check your email to verify.', 201);
     } catch (err) {
         next(err);
     }
@@ -30,7 +30,7 @@ const verifyEmail = async (req, res, next) => {
 			return next(err);
 		};
 
-        res.status(200).json({ message: 'Email verified successfully. You can now login.' });
+        res.success(null, 'Email verified successfully. You can now login.');
     } catch (err) {
         next(err);
     }
@@ -42,7 +42,7 @@ const login = async (req, res, next) => {
         const { accessToken, refreshToken, user } = await authService.login(parsedBody);
         
         setTokens(res, accessToken, refreshToken);
-        res.status(200).json({ message: 'Login successful', user });
+        res.success(user, 'Login successful', 200);
     } catch (err) {
         next(err);
     }
@@ -50,7 +50,7 @@ const login = async (req, res, next) => {
 
 const logout = (req, res) => {
     clearTokens(res);
-    res.status(200).json({ message: 'Logged out successfully' });
+    res.success(null, 'Logged out successfully');
 };
 
 module.exports = { register, verifyEmail, login, logout };
