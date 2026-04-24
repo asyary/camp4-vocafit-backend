@@ -39,12 +39,7 @@ const processScan = async (qrToken, iotSecret) => {
         resultMessage = 'Tap-out successful. Have a great day!';
         action = 'TAP_OUT';
     } else {
-        // If user is outside, this is tap-in, check for active membership first tho :0
-        const hasMembership = await repository.getActiveMembership(userId);
-        if (!hasMembership) {
-            throw new Error('No active membership found. Please purchase a daily or monthly pass.');
-        }
-
+		// If user is not inside, this is tap-in
         await repository.createTapIn(userId, qrToken);
         resultMessage = 'Tap-in successful. Welcome to Vocafit!';
         action = 'TAP_IN';
