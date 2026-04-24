@@ -7,7 +7,7 @@ const createTransaction = async (req, res) => {
         const result = await service.createPayment(req.user.id, parsedBody);
         res.status(201).json({ success: true, data: result });
     } catch (err) {
-        res.status(400).json({ success: false, error: err.message });
+        next(err);
     }
 };
 
@@ -16,7 +16,7 @@ const getPendingCash = async (req, res) => {
         const transactions = await service.getCashPayments();
         res.status(200).json({ success: true, data: transactions });
     } catch (err) {
-        res.status(500).json({ success: false, error: err.message });
+        next(err);
     }
 };
 
@@ -26,7 +26,7 @@ const confirmCash = async (req, res) => {
         const transaction = await service.confirmCashPayment(transactionId, status);
         res.status(200).json({ success: true, message: `Transaction marked as ${status}`, data: transaction });
     } catch (err) {
-        res.status(400).json({ success: false, error: err.message });
+        next(err);
     }
 };
 
@@ -39,10 +39,7 @@ const midtransWebhook = async (req, res) => {
         res.status(200).json({ success: true, message: result.message });
     } catch (err) {
         console.error('Midtrans Webhook Error:', err.message);
-        // Return 500 to retry if it was a server error, 
-        // or 400 if it was a bad signature
-        const statusCode = err.message.includes('signature') ? 400 : 500;
-        res.status(statusCode).json({ success: false, error: err.message });
+        next(err);
     }
 };
 

@@ -4,6 +4,7 @@ const cors = require('cors');
 const helmet = require('helmet');
 const cookieParser = require('cookie-parser');
 const { xss } = require('express-xss-sanitizer');
+const { ZodError } = require('zod');
 
 const authRoutes = require('./modules/auth/auth.routes');
 const transactionRoutes = require('./modules/transactions/transaction.routes');
@@ -42,11 +43,20 @@ app.use('/api/users', userRoutes);
 
 // Global Error Handler
 app.use((err, req, res, next) => {
-    console.error(err.stack);
-    res.status(err.status || 500).json({
-        success: false,
-        message: err.message || 'Internal Server Error'
-    });
+	if (err instanceof ZodError) {
+		return res.status(400).json({
+			success: false,
+			message: "Invalid Input",
+			data: err.flatten().fieldErrors // Simplifies the Zod error structure
+		});
+	}
+
+	// Handle other types of errors
+	res.status(err.status || 500).json({
+		success: false,
+		message: err.message || "Internal Server Error",
+		data: null
+	});
 });
 
 const PORT = process.env.PORT || 8080;

@@ -10,21 +10,29 @@ const register = async (req, res, next) => {
         await authService.register(parsedBody, fileBuffer);
         res.status(201).json({ message: 'Registration successful. Please check your email to verify.' });
     } catch (err) {
-        res.status(400).json({ error: err.message });
+        next(err);
     }
 };
 
 const verifyEmail = async (req, res, next) => {
     try {
         const { token } = req.params;
-        if (!token) return res.status(400).json({ error: 'Token required' });
+        if (!token) {
+			const err = new Error('Token is required');
+			err.status = 400;
+			return next(err);
+		};
         
         const verified = await authService.verifyUser(token);
-        if (!verified) return res.status(400).json({ error: 'Invalid or expired token' });
+        if (!verified) {
+			const err = new Error('Invalid or expired token');
+			err.status = 404;
+			return next(err);
+		};
 
         res.status(200).json({ message: 'Email verified successfully. You can now login.' });
     } catch (err) {
-        res.status(400).json({ error: err.message });
+        next(err);
     }
 };
 
@@ -36,7 +44,7 @@ const login = async (req, res, next) => {
         setTokens(res, accessToken, refreshToken);
         res.status(200).json({ message: 'Login successful', user });
     } catch (err) {
-        res.status(400).json({ error: err.message });
+        next(err);
     }
 };
 

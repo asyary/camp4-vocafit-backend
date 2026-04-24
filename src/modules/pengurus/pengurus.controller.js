@@ -12,7 +12,7 @@ const createNews = async (req, res) => {
         const news = await service.addNews({ ...parsedBody, authorId: req.user.id }, fileBuffer);
         res.status(201).json({ success: true, data: news });
     } catch (err) {
-        res.status(400).json({ success: false, error: err.message });
+        next(err);
     }
 };
 
@@ -22,7 +22,7 @@ const getNews = async (req, res) => {
         const result = await service.getNews(page, limit);
         res.status(200).json({ success: true, ...result });
     } catch (err) {
-        res.status(400).json({ success: false, error: err.errors || err.message });
+        next(err);
     }
 };
 
@@ -31,7 +31,7 @@ const deleteNews = async (req, res) => {
         await service.removeNews(req.params.id);
         res.status(200).json({ success: true, message: 'News deleted successfully' });
     } catch (err) {
-        res.status(500).json({ success: false, error: err.message });
+        next(err);
     }
 };
 
@@ -43,7 +43,7 @@ const createTrainer = async (req, res) => {
         const trainer = await service.addTrainer(parsedBody, fileBuffer);
         res.status(201).json({ success: true, data: trainer });
     } catch (err) {
-        res.status(400).json({ success: false, error: err.message });
+        next(err);
     }
 };
 
@@ -52,7 +52,7 @@ const getTrainers = async (req, res) => {
         const trainers = await service.getTrainers();
         res.status(200).json({ success: true, data: trainers });
     } catch (err) {
-        res.status(500).json({ success: false, error: err.message });
+        next(err);
     }
 };
 
@@ -62,7 +62,7 @@ const createSchedule = async (req, res) => {
         const schedule = await service.addSchedule(parsedBody);
         res.status(201).json({ success: true, data: schedule });
     } catch (err) {
-        res.status(400).json({ success: false, error: err.message });
+        next(err);
     }
 };
 
@@ -77,7 +77,7 @@ const getUsers = async (req, res) => {
             ...result 
         });
     } catch (err) {
-        res.status(400).json({ success: false, error: err.errors || err.message });
+        next(err);
     }
 };
 
@@ -87,7 +87,7 @@ const updateUser = async (req, res) => {
         const updatedUser = await service.editUser(req.params.id, parsedBody);
         res.status(200).json({ success: true, data: updatedUser });
     } catch (err) {
-        res.status(400).json({ success: false, error: err.message });
+        next(err);
     }
 };
 
@@ -108,7 +108,7 @@ const updateUserImage = async (req, res) => {
         
         res.status(200).json({ success: true, data: rows[0] });
     } catch (err) {
-        res.status(400).json({ success: false, error: err.message });
+        next(err);
     }
 };
 

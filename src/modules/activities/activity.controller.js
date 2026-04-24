@@ -8,7 +8,7 @@ const createActivity = async (req, res) => {
         const activity = await service.addActivity(req.user.id, parsedBody);
         res.status(201).json({ success: true, data: activity });
     } catch (err) {
-        res.status(400).json({ success: false, error: err.message });
+        next(err);
     }
 };
 
@@ -18,7 +18,7 @@ const getActivities = async (req, res) => {
         const result = await service.fetchActivities(req.user.id, page, limit);
         res.status(200).json({ success: true, ...result });
     } catch (err) {
-        res.status(400).json({ success: false, error: err.errors || err.message });
+        next(err);
     }
 };
 
@@ -28,7 +28,7 @@ const updateActivity = async (req, res) => {
         const updatedActivity = await service.modifyActivity(req.params.id, req.user.id, parsedBody);
         res.status(200).json({ success: true, data: updatedActivity });
     } catch (err) {
-        res.status(400).json({ success: false, error: err.message });
+        next(err);
     }
 };
 
@@ -37,7 +37,7 @@ const deleteActivity = async (req, res) => {
         await service.removeActivity(req.params.id, req.user.id);
         res.status(200).json({ success: true, message: 'Activity deleted successfully' });
     } catch (err) {
-        res.status(400).json({ success: false, error: err.message });
+        next(err);
     }
 };
 

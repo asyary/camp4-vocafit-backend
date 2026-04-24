@@ -6,7 +6,7 @@ const getQrCode = async (req, res) => {
         const qr = await service.generateQrToken(req.user.id);
         res.status(200).json({ success: true, data: { qr, expiresIn: '5 minutes' } });
     } catch (err) {
-        res.status(500).json({ success: false, error: err.message });
+        next(err);
     }
 };
 
@@ -17,7 +17,7 @@ const scanQrCode = async (req, res) => {
         const result = await service.processScan(qr, iotSecret);
         res.status(200).json({ success: true, data: result });
     } catch (err) {
-        res.status(400).json({ success: false, error: err.message });
+        next(err);
     }
 };
 
@@ -26,7 +26,7 @@ const getCrowd = async (req, res) => {
         const crowd = await service.getCrowdMeter();
         res.status(200).json({ success: true, data: crowd });
     } catch (err) {
-        res.status(500).json({ success: false, error: err.message });
+        next(err);
     }
 };
 
