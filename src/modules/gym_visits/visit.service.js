@@ -12,11 +12,13 @@ const generateQrToken = async (userId) => {
     return qrToken;
 };
 
-const processScan = async (qrToken) => {
+const processScan = async (qrToken, iotSecret) => {
     const redisKey = `qr:${qrToken}`;
     const userId = await redisClient.get(redisKey);
 
-    if (!userId) {
+    if (iotSecret !== process.env.IOT_SECRET_KEY) {
+        throw new Error('Invalid or missing IoT secret key.');
+    } else if (!userId) {
         throw new Error('Invalid or expired QR code.');
     }
 

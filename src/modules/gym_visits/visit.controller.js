@@ -3,8 +3,8 @@ const { scanQrSchema } = require('./visit.validation');
 
 const getQrCode = async (req, res) => {
     try {
-        const qrToken = await service.generateQrToken(req.user.id);
-        res.status(200).json({ success: true, data: { qrToken, expiresIn: '5 minutes' } });
+        const qr = await service.generateQrToken(req.user.id);
+        res.status(200).json({ success: true, data: { qr, expiresIn: '5 minutes' } });
     } catch (err) {
         res.status(500).json({ success: false, error: err.message });
     }
@@ -12,8 +12,9 @@ const getQrCode = async (req, res) => {
 
 const scanQrCode = async (req, res) => {
     try {
-        const { qrToken } = scanQrSchema.parse(req.body);
-        const result = await service.processScan(qrToken);
+        const iotSecret = req.headers['x-iot-secret'];
+        const { qr } = scanQrSchema.parse(req.body);
+        const result = await service.processScan(qr, iotSecret);
         res.status(200).json({ success: true, data: result });
     } catch (err) {
         res.status(400).json({ success: false, error: err.message });
