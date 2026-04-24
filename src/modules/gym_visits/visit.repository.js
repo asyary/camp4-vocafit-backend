@@ -1,14 +1,5 @@
 const db = require('../../config/db');
 
-const getActiveMembership = async (userId) => {
-    const { rows } = await db.query(
-        `SELECT id FROM memberships 
-         WHERE user_id = $1 AND start_date <= NOW() AND end_date >= NOW()`,
-        [userId]
-    );
-    return rows[0];
-};
-
 const getActiveVisit = async (userId) => {
     const { rows } = await db.query(
         `SELECT * FROM gym_visits 
@@ -71,7 +62,6 @@ const applyPenaltyAndAutoTapOut = async () => {
 };
 
 module.exports = {
-    getActiveMembership,
     getActiveVisit,
     createTapIn,
     updateTapOut,
