@@ -3,27 +3,37 @@ const db = require('../config/db');
 
 const requireAuth = (req, res, next) => {
     const token = req.cookies.access_token;
-    if (!token) return res.status(401).json({ message: 'Unauthorized' });
+    if (!token) {
+        const err = new Error('Unauthorized');
+        err.status = 401;
+        return next(err);
+    }
 
     try {
         const decoded = verifyAccessToken(token);
         req.user = decoded;
         next();
-    } catch (err) {
-        return res.status(401).json({ message: 'Invalid or expired token' });
+    } catch (error) {
+        const err = new Error('Invalid or expired token');
+        err.status = 401;
+        return next(err);
     }
 };
 
 const requireRole = (role) => (req, res, next) => {
     if (req.user.role !== role) {
-        return res.status(403).json({ message: 'Forbidden' });
+        const err = new Error('Forbidden');
+        err.status = 403;
+        return next(err);
     }
     next();
 };
 
 const requireMembership = async (req, res, next) => {
     if (!req.user || !req.user.role || req.user.role !== 'member') {
-        return res.status(403).json({ message: 'Forbidden' });
+        const err = new Error('Forbidden');
+        err.status = 403;
+        return next(err);
     }
 
     try {
@@ -33,13 +43,17 @@ const requireMembership = async (req, res, next) => {
         );
 
         if (result.rows.length === 0) {
-            return res.status(403).json({ message: 'Active membership required' });
+            const err = new Error('Active membership required');
+            err.status = 403;
+            return next(err);
         }
 
         next();
     } catch (err) {
         console.error('Membership check error:', err);
-        return res.status(500).json({ message: 'Internal server error' });
+        const error = new Error('Internal server error');
+        error.status = 500;
+        return next(error);
     }
 };
 

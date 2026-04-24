@@ -4,6 +4,7 @@ const cors = require('cors');
 const helmet = require('helmet');
 const cookieParser = require('cookie-parser');
 const { xss } = require('express-xss-sanitizer');
+const { ZodError } = require('zod');
 
 const authRoutes = require('./modules/auth/auth.routes');
 const transactionRoutes = require('./modules/transactions/transaction.routes');
@@ -14,8 +15,10 @@ const pengurusRoutes = require('./modules/pengurus/pengurus.routes');
 const activityRoutes = require('./modules/activities/activity.routes');
 const userRoutes = require('./modules/users/user.routes');
 const { initCronJobs } = require('./cron/penalty.cron');
+const responseHandler = require('./middlewares/response.middleware');
 
 const app = express();
+app.use(responseHandler);
 
 initCronJobs();
 
@@ -42,11 +45,12 @@ app.use('/api/users', userRoutes);
 
 // Global Error Handler
 app.use((err, req, res, next) => {
-    console.error(err.stack);
-    res.status(err.status || 500).json({
-        success: false,
-        message: err.message || 'Internal Server Error'
-    });
+	if (err instanceof ZodError) {
+		return res.error('Validation Error', 400, err.flatten().fieldErrors);
+	}
+
+	// Handle other types of errors
+	res.error(err.message || 'Internal Server Error', err.status || 500, err.data || null);
 });
 
 const PORT = process.env.PORT || 8080;

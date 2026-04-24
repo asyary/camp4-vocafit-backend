@@ -10,9 +10,9 @@ const createNews = async (req, res) => {
         const fileBuffer = req.file ? req.file.buffer : null;
         
         const news = await service.addNews({ ...parsedBody, authorId: req.user.id }, fileBuffer);
-        res.status(201).json({ success: true, data: news });
+        res.success(news, 'News created successfully', 201);
     } catch (err) {
-        res.status(400).json({ success: false, error: err.message });
+        next(err);
     }
 };
 
@@ -20,18 +20,18 @@ const getNews = async (req, res) => {
     try {
         const { page, limit } = paginationSchema.parse(req.query);
         const result = await service.getNews(page, limit);
-        res.status(200).json({ success: true, ...result });
+        res.success(result.data, 'News retrieved successfully', 200, { page, limit, total: result.total_pages });
     } catch (err) {
-        res.status(400).json({ success: false, error: err.errors || err.message });
+        next(err);
     }
 };
 
 const deleteNews = async (req, res) => {
     try {
         await service.removeNews(req.params.id);
-        res.status(200).json({ success: true, message: 'News deleted successfully' });
+        res.success(null, 'News deleted successfully');
     } catch (err) {
-        res.status(500).json({ success: false, error: err.message });
+        next(err);
     }
 };
 
@@ -41,18 +41,18 @@ const createTrainer = async (req, res) => {
         const fileBuffer = req.file ? req.file.buffer : null;
 
         const trainer = await service.addTrainer(parsedBody, fileBuffer);
-        res.status(201).json({ success: true, data: trainer });
+        res.success(trainer, 'Trainer created successfully', 201);
     } catch (err) {
-        res.status(400).json({ success: false, error: err.message });
+        next(err);
     }
 };
 
 const getTrainers = async (req, res) => {
     try {
         const trainers = await service.getTrainers();
-        res.status(200).json({ success: true, data: trainers });
+        res.success(trainers, 'Trainers retrieved successfully');
     } catch (err) {
-        res.status(500).json({ success: false, error: err.message });
+        next(err);
     }
 };
 
@@ -60,9 +60,9 @@ const createSchedule = async (req, res) => {
     try {
         const parsedBody = scheduleSchema.parse(req.body);
         const schedule = await service.addSchedule(parsedBody);
-        res.status(201).json({ success: true, data: schedule });
+        res.success(schedule, 'Schedule created successfully', 201);
     } catch (err) {
-        res.status(400).json({ success: false, error: err.message });
+        next(err);
     }
 };
 
@@ -72,12 +72,9 @@ const getUsers = async (req, res) => {
         
         const result = await service.getUsersList(page, limit);
         
-        res.status(200).json({ 
-            success: true, 
-            ...result 
-        });
+        res.success(result.data, 'Users retrieved successfully', 200, { page, limit, total: result.total_pages });
     } catch (err) {
-        res.status(400).json({ success: false, error: err.errors || err.message });
+        next(err);
     }
 };
 
@@ -85,9 +82,9 @@ const updateUser = async (req, res) => {
     try {
         const parsedBody = updateUserSchema.parse(req.body);
         const updatedUser = await service.editUser(req.params.id, parsedBody);
-        res.status(200).json({ success: true, data: updatedUser });
+        res.success(updatedUser, 'User updated successfully');
     } catch (err) {
-        res.status(400).json({ success: false, error: err.message });
+        next(err);
     }
 };
 
@@ -106,9 +103,9 @@ const updateUserImage = async (req, res) => {
         
         if (rows.length === 0) throw new Error('User not found');
         
-        res.status(200).json({ success: true, data: rows[0] });
+        res.success(rows[0], 'User image updated successfully');
     } catch (err) {
-        res.status(400).json({ success: false, error: err.message });
+        next(err);
     }
 };
 
