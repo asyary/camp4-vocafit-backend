@@ -4,7 +4,7 @@ const { paginationSchema } = require('../../utils/validation.util');
 const { uploadToCloudinary } = require('../../utils/cloudinary.util');
 const db = require('../../config/db');
 
-const createNews = async (req, res) => {
+const createNews = async (req, res, next) => {
     try {
         const parsedBody = newsSchema.parse(req.body);
         const fileBuffer = req.file ? req.file.buffer : null;
@@ -16,7 +16,7 @@ const createNews = async (req, res) => {
     }
 };
 
-const getNews = async (req, res) => {
+const getNews = async (req, res, next) => {
     try {
         const { page, limit } = paginationSchema.parse(req.query);
         const result = await service.getNews(page, limit);
@@ -26,7 +26,7 @@ const getNews = async (req, res) => {
     }
 };
 
-const deleteNews = async (req, res) => {
+const deleteNews = async (req, res, next) => {
     try {
         await service.removeNews(req.params.id);
         res.success(null, 'News deleted successfully');
@@ -35,7 +35,7 @@ const deleteNews = async (req, res) => {
     }
 };
 
-const createTrainer = async (req, res) => {
+const createTrainer = async (req, res, next) => {
     try {
         const parsedBody = trainerSchema.parse(req.body);
         const fileBuffer = req.file ? req.file.buffer : null;
@@ -47,7 +47,7 @@ const createTrainer = async (req, res) => {
     }
 };
 
-const getTrainers = async (req, res) => {
+const getTrainers = async (req, res, next) => {
     try {
         const trainers = await service.getTrainers();
         res.success(trainers, 'Trainers retrieved successfully');
@@ -56,7 +56,7 @@ const getTrainers = async (req, res) => {
     }
 };
 
-const createSchedule = async (req, res) => {
+const createSchedule = async (req, res, next) => {
     try {
         const parsedBody = scheduleSchema.parse(req.body);
         const schedule = await service.addSchedule(parsedBody);
@@ -66,7 +66,7 @@ const createSchedule = async (req, res) => {
     }
 };
 
-const getUsers = async (req, res) => {
+const getUsers = async (req, res, next) => {
     try {
         const { page, limit } = paginationSchema.parse(req.query);
         
@@ -78,7 +78,7 @@ const getUsers = async (req, res) => {
     }
 };
 
-const updateUser = async (req, res) => {
+const updateUser = async (req, res, next) => {
     try {
         const parsedBody = updateUserSchema.parse(req.body);
         const updatedUser = await service.editUser(req.params.id, parsedBody);
@@ -88,7 +88,7 @@ const updateUser = async (req, res) => {
     }
 };
 
-const updateUserImage = async (req, res) => {
+const updateUserImage = async (req, res, next) => {
     try {
         if (!req.file) throw new Error('New image file is required');
 

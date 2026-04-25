@@ -2,7 +2,7 @@ const service = require('./activity.service');
 const { createActivitySchema, updateActivitySchema } = require('./activity.validation');
 const { paginationSchema } = require('../../utils/validation.util');
 
-const createActivity = async (req, res) => {
+const createActivity = async (req, res, next) => {
     try {
         const parsedBody = createActivitySchema.parse(req.body);
         const activity = await service.addActivity(req.user.id, parsedBody);
@@ -12,7 +12,7 @@ const createActivity = async (req, res) => {
     }
 };
 
-const getActivities = async (req, res) => {
+const getActivities = async (req, res, next) => {
     try {
         const { page, limit } = paginationSchema.parse(req.query);
         const result = await service.fetchActivities(req.user.id, page, limit);
@@ -22,7 +22,7 @@ const getActivities = async (req, res) => {
     }
 };
 
-const updateActivity = async (req, res) => {
+const updateActivity = async (req, res, next) => {
     try {
         const parsedBody = updateActivitySchema.parse(req.body);
         const updatedActivity = await service.modifyActivity(req.params.id, req.user.id, parsedBody);
@@ -32,7 +32,7 @@ const updateActivity = async (req, res) => {
     }
 };
 
-const deleteActivity = async (req, res) => {
+const deleteActivity = async (req, res, next) => {
     try {
         await service.removeActivity(req.params.id, req.user.id);
         res.success(null, 'Activity deleted successfully');

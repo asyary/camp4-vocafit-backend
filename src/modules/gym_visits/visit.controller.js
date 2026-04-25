@@ -1,7 +1,7 @@
 const service = require('./visit.service');
 const { scanQrSchema } = require('./visit.validation');
 
-const getQrCode = async (req, res) => {
+const getQrCode = async (req, res, next) => {
     try {
         const qr = await service.generateQrToken(req.user.id);
         res.success({ qr, expiresIn: '5 minutes' }, 'QR code generated successfully');
@@ -10,7 +10,7 @@ const getQrCode = async (req, res) => {
     }
 };
 
-const scanQrCode = async (req, res) => {
+const scanQrCode = async (req, res, next) => {
     try {
         const iotSecret = req.headers['x-iot-secret'];
         const { qr } = scanQrSchema.parse(req.body);
@@ -21,7 +21,7 @@ const scanQrCode = async (req, res) => {
     }
 };
 
-const getCrowd = async (req, res) => {
+const getCrowd = async (req, res, next) => {
     try {
         const crowd = await service.getCrowdMeter();
         res.success(crowd, 'Crowd meter data retrieved successfully');

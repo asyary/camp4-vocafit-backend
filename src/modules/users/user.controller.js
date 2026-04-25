@@ -2,7 +2,7 @@ const service = require('./user.service');
 const { updateProfileSchema } = require('./user.validation');
 const { clearTokens } = require('../../utils/cookie.util');
 
-const getMe = async (req, res) => {
+const getMe = async (req, res, next) => {
     try {
         const user = await service.getMyProfile(req.user.id);
         res.success(user, 'Profile retrieved successfully');
@@ -11,7 +11,7 @@ const getMe = async (req, res) => {
     }
 };
 
-const updateMe = async (req, res) => {
+const updateMe = async (req, res, next) => {
     try {
         const parsedBody = updateProfileSchema.parse(req.body);
         const updatedUser = await service.updateMyProfile(req.user.id, parsedBody);
@@ -21,7 +21,7 @@ const updateMe = async (req, res) => {
     }
 };
 
-const deleteMe = async (req, res) => {
+const deleteMe = async (req, res, next) => {
     try {
         await service.deleteMyAccount(req.user.id);
         clearTokens(res); // Log them out by clearing cookies

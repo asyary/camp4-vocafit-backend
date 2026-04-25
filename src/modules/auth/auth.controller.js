@@ -48,7 +48,7 @@ const login = async (req, res, next) => {
     }
 };
 
-const logout = (req, res) => {
+const logout = (req, res, next) => {
     clearTokens(res);
     res.success(null, 'Logged out successfully');
 };
