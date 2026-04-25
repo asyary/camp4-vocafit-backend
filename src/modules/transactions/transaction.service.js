@@ -28,13 +28,46 @@ const createPayment = async (userId, payload) => {
     const grossAmount = basePrice + penaltyAmount;
 
     // Prepare Transaction Data
-    const orderId = `VOCAFIT-${crypto.randomBytes(4).toString('hex').toUpperCase()}-${Date.now()}`;
+	const orderId = `VOCAFIT-${crypto.randomBytes(4).toString('hex').toUpperCase()}-${Math.floor(Date.now() / 1000).toString(16).toUpperCase()}`;
     let expireAt = null;
 
     if (payload.paymentMethod === 'CASH') {
         // TTL 24 Hours for Cash
         expireAt = new Date();
         expireAt.setHours(expireAt.getHours() + 24);
+    } else if (payload.paymentMethod === 'QRIS') {
+		expireAt = new Date();
+		expireAt.setMinutes(expireAt.getMinutes() + 30);
+	}
+    
+    let paymentUrl = null;
+    let snapToken = null;
+
+    // Handle Midtrans if QRIS
+    if (payload.paymentMethod === 'QRIS') {
+		const midtransParams = {
+			transaction_details: {
+			order_id: orderId,
+			gross_amount: grossAmount
+			},
+			item_details: [
+			{
+				id: payload.transactionType,
+				price: grossAmount,
+				quantity: 1,
+				name: payload.transactionType.replace(/_/g, ' ')
+			}
+			],
+			customer_details: {
+			first_name: user.full_name,
+			email: user.email
+			}
+			// enabled_payments: ["gopay", "shopeepay", "other_qris"] // Now using SNAP preferences
+		};
+
+        const snapResponse = await snap.createTransaction(midtransParams);
+        paymentUrl = snapResponse.redirect_url;
+        snapToken = snapResponse.token;
     }
 
     // Save to Database
@@ -44,35 +77,14 @@ const createPayment = async (userId, payload) => {
         paymentMethod: payload.paymentMethod,
         transactionType: payload.transactionType,
         orderId,
-        expireAt
+        expireAt,
+        paymentUrl,
+        snapToken
     });
 
-    // Handle Midtrans if QRIS
-    if (payload.paymentMethod === 'QRIS') {
-        const midtransParams = {
-            transaction_details: {
-                order_id: orderId,
-                gross_amount: grossAmount
-            },
-            customer_details: {
-                first_name: user.full_name,
-                email: user.email
-            },
-            enabled_payments: ["gopay", "shopeepay", "other_qris"] // Force QRIS options
-        };
-
-        const snapResponse = await snap.createTransaction(midtransParams);
-        return { 
-            transaction, 
-            paymentUrl: snapResponse.redirect_url, 
-            snapToken: snapResponse.token 
-        };
-    }
-
-    return { 
-        transaction, 
-        message: 'Please hand the cash to the Pengurus within 24 hours.' 
-    };
+	delete transaction.snap_token;
+	
+    return transaction;
 };
 
 const getCashPayments = async () => {
@@ -143,7 +155,9 @@ const handleMidtransWebhook = async (notificationPayload) => {
         await repository.processFailedPayment(transaction.id);
         return { message: 'Payment marked as failed/expired' };
     } else if (transaction_status === 'pending') {
-        return { message: 'Payment still pending' };
+		// payment_type is cstore for Indomaret/Alfamart
+		await repository.updateTransactionExpiry(transaction.id, new Date(Date.now() + 30 * 60 * 1000));
+        return { message: 'Payment pending funds' };
     }
 
     return { message: 'Unhandled transaction status' };

@@ -10,14 +10,14 @@ const getUserForTransaction = async (userId) => {
 };
 
 const createTransaction = async (data) => {
-    const { userId, amount, paymentMethod, transactionType, expireAt, orderId } = data;
+    const { userId, amount, paymentMethod, transactionType, expireAt, orderId, paymentUrl, snapToken } = data;
     
     const { rows } = await db.query(
         `INSERT INTO transactions 
-        (user_id, amount, payment_method, transaction_type, midtrans_order_id, expire_at) 
-        VALUES ($1, $2, $3, $4, $5, $6) 
+        (user_id, amount, payment_method, transaction_type, midtrans_order_id, expire_at, payment_url, snap_token) 
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8) 
         RETURNING *`,
-        [userId, amount, paymentMethod, transactionType, orderId, expireAt]
+        [userId, amount, paymentMethod, transactionType, orderId, expireAt, paymentUrl, snapToken]
     );
     return rows[0];
 };
@@ -42,6 +42,14 @@ const updateTransactionStatus = async (transactionId, status) => {
         [status, transactionId]
     );
     return rows[0];
+};
+
+const updateTransactionExpiry = async (transactionId, expireAt) => {
+	const { rows } = await db.query(
+		'UPDATE transactions SET expire_at = $1 WHERE id = $2 RETURNING *',
+		[expireAt, transactionId]
+	);
+	return rows[0];
 };
 
 const getTransactionByOrderId = async (orderId) => {
@@ -102,6 +110,7 @@ module.exports = {
     createTransaction, 
     getPendingCashTransactions,
     updateTransactionStatus,
+    updateTransactionExpiry,
 	getTransactionByOrderId,
     processSuccessfulPayment,
     processFailedPayment
