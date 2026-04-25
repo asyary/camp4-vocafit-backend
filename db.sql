@@ -33,8 +33,11 @@ CREATE TABLE transactions (
     status VARCHAR(50) DEFAULT 'PENDING' CHECK (status IN ('PENDING', 'SUCCESS', 'FAILED')),
     transaction_type VARCHAR(50) CHECK (transaction_type IN ('MEMBERSHIP_DAILY', 'MEMBERSHIP_MONTHLY', 'PT_SESSION', 'GROUP_FITNESS')),
     midtrans_order_id VARCHAR(255),
+	payment_url VARCHAR(255),
+	snap_token VARCHAR(255),
     expire_at TIMESTAMP WITH TIME ZONE, -- 24h for cash
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+	settled_at TIMESTAMP WITH TIME ZONE
 );
 
 -- Gym Visits (Tap In/Out & Crowd Meter)
