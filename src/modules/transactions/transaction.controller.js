@@ -1,7 +1,7 @@
 const service = require('./transaction.service');
 const { createTransactionSchema, confirmCashSchema } = require('./transaction.validation');
 
-const createTransaction = async (req, res) => {
+const createTransaction = async (req, res, next) => {
     try {
         const parsedBody = createTransactionSchema.parse(req.body);
         const result = await service.createPayment(req.user.id, parsedBody);
@@ -11,7 +11,7 @@ const createTransaction = async (req, res) => {
     }
 };
 
-const getPendingCash = async (req, res) => {
+const getPendingCash = async (req, res, next) => {
     try {
         const transactions = await service.getCashPayments();
         res.success(transactions, 'Pending cash transactions retrieved successfully');
@@ -20,7 +20,7 @@ const getPendingCash = async (req, res) => {
     }
 };
 
-const confirmCash = async (req, res) => {
+const confirmCash = async (req, res, next) => {
     try {
         const { transactionId, status } = confirmCashSchema.parse(req.body);
         const transaction = await service.confirmCashPayment(transactionId, status);
@@ -30,7 +30,7 @@ const confirmCash = async (req, res) => {
     }
 };
 
-const midtransWebhook = async (req, res) => {
+const midtransWebhook = async (req, res, next) => {
     try {
         // Midtrans sends the notification via POST body
         const result = await service.handleMidtransWebhook(req.body);
