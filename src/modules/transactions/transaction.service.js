@@ -2,6 +2,7 @@
 const { snap } = require('../../config/midtrans');
 const repository = require('./transaction.repository');
 const crypto = require('crypto');
+const db = require('../../config/db');
 
 const PRICING = {
     MEMBERSHIP_DAILY: 15000,
