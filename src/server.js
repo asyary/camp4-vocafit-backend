@@ -4,7 +4,6 @@ const cors = require('cors');
 const helmet = require('helmet');
 const cookieParser = require('cookie-parser');
 const { xss } = require('express-xss-sanitizer');
-const multer = require('multer');
 
 const authRoutes = require('./modules/auth/auth.routes');
 const transactionRoutes = require('./modules/transactions/transaction.routes');
@@ -66,13 +65,6 @@ app.use('/api/users', userRoutes);
 // Global Error Handler
 app.use((err, req, res, next) => {
     console.error(err.stack);
-    if (err instanceof multer.MulterError || err.message === 'Only image files are allowed!') {
-        return res.status(400).json({
-            success: false,
-            message: err.message
-        });
-    }
-
     res.status(err.status || 500).json({
         success: false,
         message: err.message || 'Internal Server Error'
