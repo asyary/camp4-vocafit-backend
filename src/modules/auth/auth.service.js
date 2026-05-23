@@ -5,12 +5,23 @@ const { sendVerificationEmail } = require('../../utils/email.util');
 const { generateAccessToken, generateRefreshToken } = require('../../utils/jwt.util');
 const { uploadToCloudinary } = require('../../utils/cloudinary.util');
 
+const fetchWithTimeout = async (url, timeoutMs) => {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+    try {
+        return await fetch(url, { signal: controller.signal });
+    } finally {
+        clearTimeout(timeoutId);
+    }
+};
+
 const determinePricing = async (email) => {
     let monthlyPrice = 300000; // Default Non-Unesa
 
     if (email.endsWith('unesa.ac.id')) {
         try {
-            const response = await fetch(`https://sso.unesa.ac.id/api/profil/email/${email}`);
+            const response = await fetchWithTimeout(`https://sso.unesa.ac.id/api/profil/email/${email}`, 5000);
             const resData = await response.json();
             
             if (resData && resData.length > 0) {
@@ -51,7 +62,13 @@ const register = async (data, fileBuffer) => {
         profileImageUrl
     });
 
-    await sendVerificationEmail(user.email, verificationToken);
+    try {
+        await sendVerificationEmail(user.email, verificationToken);
+    } catch (error) {
+        console.error('Failed to send verification email', error);
+        throw new Error('Registration saved, but verification email failed to send');
+    }
+
     return user;
 };
 

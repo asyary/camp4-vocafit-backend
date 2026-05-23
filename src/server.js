@@ -4,6 +4,7 @@ const cors = require('cors');
 const helmet = require('helmet');
 const cookieParser = require('cookie-parser');
 const { xss } = require('express-xss-sanitizer');
+const multer = require('multer');
 
 const authRoutes = require('./modules/auth/auth.routes');
 const transactionRoutes = require('./modules/transactions/transaction.routes');
@@ -19,10 +20,32 @@ const app = express();
 
 initCronJobs();
 
+const parseAllowedOrigins = () => {
+    const fromList = (process.env.ALLOWED_ORIGINS || '')
+        .split(',')
+        .map((origin) => origin.trim())
+        .filter(Boolean);
+
+    if (fromList.length > 0) return fromList;
+    if (process.env.CLIENT_URL) return [process.env.CLIENT_URL.trim()];
+    return [];
+};
+
+const allowedOrigins = parseAllowedOrigins();
+
 // Middlewares
 app.use(helmet());
 app.use(cors({
-    origin: process.env.CLIENT_URL,
+    origin: (origin, callback) => {
+        // Allow non-browser clients (Postman, server-to-server)
+        if (!origin) return callback(null, true);
+
+        if (allowedOrigins.includes(origin)) {
+            return callback(null, true);
+        }
+
+        return callback(new Error(`Origin not allowed by CORS: ${origin}`));
+    },
     credentials: true
 }));
 app.use(express.json());
@@ -43,6 +66,13 @@ app.use('/api/users', userRoutes);
 // Global Error Handler
 app.use((err, req, res, next) => {
     console.error(err.stack);
+    if (err instanceof multer.MulterError || err.message === 'Only image files are allowed!') {
+        return res.status(400).json({
+            success: false,
+            message: err.message
+        });
+    }
+
     res.status(err.status || 500).json({
         success: false,
         message: err.message || 'Internal Server Error'

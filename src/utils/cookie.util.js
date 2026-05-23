@@ -1,8 +1,10 @@
 const setTokens = (res, accessToken, refreshToken) => {
+    const isProduction = process.env.NODE_ENV === 'production';
     const cookieOptions = {
         httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: 'lax',
+        secure: isProduction,
+        sameSite: isProduction ? 'none' : 'lax',
+        path: '/',
     };
 
     res.cookie('access_token', accessToken, {
@@ -17,8 +19,16 @@ const setTokens = (res, accessToken, refreshToken) => {
 };
 
 const clearTokens = (res) => {
-    res.clearCookie('access_token');
-    res.clearCookie('refresh_token');
+    const isProduction = process.env.NODE_ENV === 'production';
+    const clearOptions = {
+        httpOnly: true,
+        secure: isProduction,
+        sameSite: isProduction ? 'none' : 'lax',
+        path: '/',
+    };
+
+    res.clearCookie('access_token', clearOptions);
+    res.clearCookie('refresh_token', clearOptions);
 };
 
 module.exports = { setTokens, clearTokens };
