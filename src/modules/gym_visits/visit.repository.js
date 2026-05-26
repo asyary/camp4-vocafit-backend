@@ -61,10 +61,19 @@ const applyPenaltyAndAutoTapOut = async () => {
     return userIds.length;
 };
 
+const getUserDetailsForSocket = async (userId) => {
+    const { rows } = await db.query(
+        'SELECT id, full_name, profile_image_url FROM users WHERE id = $1',
+        [userId]
+    );
+    return rows[0];
+};
+
 module.exports = {
     getActiveVisit,
     createTapIn,
     updateTapOut,
     getCrowdCount,
-    applyPenaltyAndAutoTapOut
+    applyPenaltyAndAutoTapOut,
+	getUserDetailsForSocket
 };
