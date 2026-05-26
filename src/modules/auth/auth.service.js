@@ -41,7 +41,7 @@ const register = async (data, fileBuffer) => {
     const profileImageUrl = await uploadToCloudinary(fileBuffer, 'users');
 
     const monthlyPrice = await determinePricing(data.email);
-    const passwordHash = await bcrypt.hash(data.password, 10);
+    const passwordHash = await bcrypt.hash(data.password, 12);
     const verificationToken = crypto.randomBytes(32).toString('hex');
 
     const user = await repository.createUser({
