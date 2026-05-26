@@ -1,6 +1,8 @@
 const crypto = require('crypto');
 const redisClient = require('../../config/redis');
 const repository = require('./visit.repository');
+const visitSocket = require('./visit.socket');
+const crowdSocket = require('./crowd.socket');
 
 const generateQrToken = async (userId) => {
     const qrToken = crypto.randomUUID();
@@ -22,13 +24,20 @@ const processScan = async (qrToken, iotSecret) => {
         throw new Error('Invalid or expired QR code.');
     }
 
-	// Needed?
-    const currentHour = new Date().getHours();
-    if (currentHour < 6 || currentHour >= 21) {
-        throw new Error('Gym is currently closed. Operating hours are 6 AM to 9 PM.');
+    // Allow visits from 06:00, grace period until 21:04
+    const now = new Date();
+    const currentHour = now.getHours();
+    const currentMinute = now.getMinutes();
+
+    const beforeOpen = currentHour < 6;
+    const afterClose = currentHour > 21 || (currentHour === 21 && currentMinute >= 5);
+
+    if (beforeOpen || afterClose) {
+        throw new Error('Gym is currently closed. Operating hours are 6:00 to 21:04.');
     }
 
     const activeVisit = await repository.getActiveVisit(userId);
+	const userDetails = await repository.getUserDetailsForSocket(userId);
 
     let resultMessage = '';
     let action = '';
@@ -38,15 +47,36 @@ const processScan = async (qrToken, iotSecret) => {
         await repository.updateTapOut(activeVisit.id);
         resultMessage = 'Tap-out successful. Have a great day!';
         action = 'TAP_OUT';
+
+		visitSocket.emitVisitActivity({
+            action: 'TAP_OUT',
+            user: userDetails,
+            time: new Date(),
+            emittedFrom: 'visit.service.processScan'
+        });
     } else {
 		// If user is not inside, this is tap-in
         await repository.createTapIn(userId, qrToken);
         resultMessage = 'Tap-in successful. Welcome to Vocafit!';
         action = 'TAP_IN';
+
+		visitSocket.emitVisitActivity({
+            action: 'TAP_IN',
+            user: userDetails,
+            time: new Date(),
+            emittedFrom: 'visit.service.processScan'
+        });
     }
 
     // Invalidate the QR token immediately after successful use
     await redisClient.del(redisKey);
+
+    const crowdMeter = await getCrowdMeter();
+    crowdSocket.emitCrowdUpdate({
+        count: crowdMeter.count,
+        status: crowdMeter.status,
+        emittedFrom: 'visit.service.processScan'
+    });
 
     return { action, message: resultMessage, userId };
 };
