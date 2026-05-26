@@ -4,13 +4,21 @@ const { requireAuth, requireRole } = require('../../middlewares/auth.middleware'
 
 const router = express.Router();
 
-router.post('/create', requireAuth, controller.createTransaction);
-
-// Cash handling
-router.get('/cash/pending', requireAuth, requireRole('pengurus'), controller.getPendingCash);
-router.post('/cash/confirm', requireAuth, requireRole('pengurus'), controller.confirmCash);
-
 // Midtrans Webhook (public)
 router.post('/webhook', controller.midtransWebhook);
+
+router.use(requireAuth);
+
+router.post('/create', controller.createTransaction);
+// TODO
+// router.post('/cancel', controller.cancelTransaction);
+// router.get('/history', controller.getTransactionHistory);
+// router.get('/(:transactionId)', controller.getTransactionDetails);
+
+router.use(requireRole('pengurus'));
+
+// Cash handling
+router.get('/cash/pending', controller.getPendingCash);
+router.post('/cash/confirm', controller.confirmCash);
 
 module.exports = router;
