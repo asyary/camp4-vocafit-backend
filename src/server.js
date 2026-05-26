@@ -3,6 +3,7 @@ const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
 const cookieParser = require('cookie-parser');
+const http = require('http');
 const { xss } = require('express-xss-sanitizer');
 const { ZodError } = require('zod');
 
@@ -16,8 +17,11 @@ const activityRoutes = require('./modules/activities/activity.routes');
 const userRoutes = require('./modules/users/user.routes');
 const { initCronJobs } = require('./cron/penalty.cron');
 const responseHandler = require('./middlewares/response.middleware');
+const { initSocket } = require('./config/socket');
 
 const app = express();
+const server = http.createServer(app);
+
 app.use(responseHandler);
 
 initCronJobs();
@@ -43,6 +47,9 @@ app.use('/api/admin', pengurusRoutes);
 app.use('/api/activities', activityRoutes);
 app.use('/api/users', userRoutes);
 
+// WebSocket init
+initSocket(server);
+
 // Global Error Handler
 app.use((err, req, res, next) => {
 	if (err instanceof ZodError) {
@@ -54,6 +61,6 @@ app.use((err, req, res, next) => {
 });
 
 const PORT = process.env.PORT || 8080;
-app.listen(PORT, () => {
+server.listen(PORT, () => {
     console.log(`Server is running on port ${PORT}`);
 });
