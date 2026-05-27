@@ -15,9 +15,18 @@ const sendVerificationEmail = async (to, name, token) => {
     await transporter.sendMail({
         from: '"Vocafit" <no-reply@vocafit.id>',
         to,
-        subject: 'Verify your Vocafit Account',
-        html: `<p>Hi, ${name}.</p><p>Click <a href="${link}">here</a> to verify your Vocafit account.</p>`
+        subject: 'Verify Your Vocafit Account',
+        html: `<p>Hi, ${name}.</p><p>Click <a href="${link}">here</a> to verify your Vocafit account.</p><p>This verification link expires in 30 minutes.</p>`
     });
 };
 
-module.exports = { sendVerificationEmail };
+const sendPasswordResetOtpEmail = async (to, name, otp) => {
+    await transporter.sendMail({
+        from: '"Vocafit" <no-reply@vocafit.id>',
+        to,
+        subject: 'Your Vocafit Password Reset OTP',
+        html: `<p>Hi, ${name}.</p><p>Your password reset OTP is <strong>${otp}</strong>.</p><p>This code expires in 30 minutes. If you did not request this, you can ignore this email.</p>`
+    });
+};
+
+module.exports = { sendVerificationEmail, sendPasswordResetOtpEmail };
