@@ -21,4 +21,14 @@ const loginSchema = z.object({
     password: z.string().min(6, "Password must be at least 6 characters long")
 });
 
-module.exports = { registerSchema, loginSchema };
+const forgotPasswordSchema = z.object({
+    email: z.email()
+});
+
+const resetPasswordSchema = z.object({
+    email: z.email(),
+    otp: z.string().length(6, 'OTP must be 6 digits').regex(/^\d{6}$/, 'OTP must contain only digits'),
+    newPassword: z.string().min(6, 'Password must be at least 6 characters long')
+});
+
+module.exports = { registerSchema, loginSchema, forgotPasswordSchema, resetPasswordSchema };

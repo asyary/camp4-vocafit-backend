@@ -1,9 +1,30 @@
 const bcrypt = require('bcrypt');
 const crypto = require('crypto');
+const db = require('../../config/db');
 const repository = require('./auth.repository');
-const { sendVerificationEmail } = require('../../utils/email.util');
+const { sendVerificationEmail, sendPasswordResetOtpEmail } = require('../../utils/email.util');
 const { generateAccessToken, generateRefreshToken } = require('../../utils/jwt.util');
 const { uploadToCloudinary } = require('../../utils/cloudinary.util');
+
+const CHALLENGE_TYPES = {
+    EMAIL_VERIFICATION: 'EMAIL_VERIFICATION',
+    PASSWORD_RESET: 'PASSWORD_RESET',
+};
+
+const TOKEN_TTL_MINUTES = 30;
+const OTP_RETRY_DELAYS_MS = [2 * 60 * 1000, 5 * 60 * 1000];
+
+const hashValue = (value) => crypto.createHash('sha256').update(value).digest('hex');
+
+const generateVerificationToken = () => crypto.randomBytes(32).toString('hex');
+
+const generateOtpCode = () => crypto.randomInt(0, 1000000).toString().padStart(6, '0');
+
+const startOfDay = () => {
+    const date = new Date();
+    date.setHours(0, 0, 0, 0);
+    return date;
+};
 
 const determinePricing = async (email) => {
     let monthlyPrice = 300000; // Default Non-Unesa
@@ -35,25 +56,55 @@ const determinePricing = async (email) => {
 
 const register = async (data, fileBuffer) => {
     const existingUser = await repository.findByEmail(data.email);
-    if (existingUser) throw new Error('Email already registered');
+    if (existingUser?.is_verified) throw new Error('Email already registered');
+    
+	const activeVerification = await repository.getActiveChallenge(data.email, CHALLENGE_TYPES.EMAIL_VERIFICATION);
+    if (existingUser && !existingUser.is_verified && activeVerification) {
+        throw new Error('Please verify your previous registration first');
+    }
+
+    const verificationsToday = await repository.countChallengesCreatedToday(data.email, CHALLENGE_TYPES.EMAIL_VERIFICATION);
+    if (verificationsToday >= 2 && (!existingUser || !existingUser.is_verified)) {
+        throw new Error('Daily registration limit reached. Please try again tomorrow');
+    }
 
     // Upload image to Cloudinary
     const profileImageUrl = await uploadToCloudinary(fileBuffer, 'users');
 
     const monthlyPrice = await determinePricing(data.email);
     const passwordHash = await bcrypt.hash(data.password, 12);
-    const verificationToken = crypto.randomBytes(32).toString('hex');
+    const verificationToken = generateVerificationToken();
+    const tokenHash = hashValue(verificationToken);
+    const expiresAt = new Date(Date.now() + TOKEN_TTL_MINUTES * 60 * 1000);
 
-    const user = await repository.createUser({
-        ...data,
-        passwordHash,
-        monthlyPrice,
-        verificationToken,
-        profileImageUrl
+    const { user, challenge } = await db.withTransaction(async (client) => {
+        const savedUser = existingUser
+            ? await repository.updateUnverifiedUser({
+                ...data,
+                passwordHash,
+                monthlyPrice,
+                profileImageUrl
+            }, client)
+            : await repository.createUser({
+                ...data,
+                passwordHash,
+                monthlyPrice,
+                profileImageUrl
+            }, client);
+
+        const savedChallenge = await repository.createChallenge({
+            email: data.email,
+            userId: savedUser.id,
+            challengeType: CHALLENGE_TYPES.EMAIL_VERIFICATION,
+            tokenHash,
+            expiresAt,
+        }, client);
+
+        return { user: savedUser, challenge: savedChallenge };
     });
 
     await sendVerificationEmail(user.email, user.full_name, verificationToken);
-    return user;
+    return { user, challenge };
 };
 
 const login = async (data) => {
@@ -70,4 +121,116 @@ const login = async (data) => {
     return { accessToken, refreshToken, user: { id: user.id, role: user.role, name: user.full_name } };
 };
 
-module.exports = { register, login, verifyUser: repository.verifyUserInDb };
+const verifyUser = async (token) => {
+    const tokenHash = hashValue(token);
+    const challenge = await repository.getVerificationChallengeByTokenHash(tokenHash);
+
+    if (!challenge) return null;
+
+    const verifiedUser = await db.withTransaction(async (client) => {
+        const updatedUser = await repository.markUserVerified(challenge.email, client);
+        if (!updatedUser) return null;
+
+        await repository.consumeChallenge(challenge.id, client);
+        return updatedUser;
+    });
+
+    if (!verifiedUser) return null;
+    return verifiedUser;
+};
+
+const requestPasswordReset = async (email) => {
+    const user = await repository.findByEmail(email);
+    if (!user || !user.is_verified) {
+        return true;
+    }
+
+    const activeChallenge = await repository.getActiveChallenge(email, CHALLENGE_TYPES.PASSWORD_RESET);
+    if (activeChallenge) {
+        return true;
+    }
+
+    const requestCount = await repository.countChallengesCreatedToday(email, CHALLENGE_TYPES.PASSWORD_RESET);
+    if (requestCount >= 3) {
+        throw new Error('Password reset request limit reached for today');
+    }
+
+    const otp = generateOtpCode();
+    const otpHash = hashValue(`${email}:${otp}`);
+    const expiresAt = new Date(Date.now() + TOKEN_TTL_MINUTES * 60 * 1000);
+
+    await repository.createChallenge({
+        email,
+        userId: user.id,
+        challengeType: CHALLENGE_TYPES.PASSWORD_RESET,
+        otpHash,
+        expiresAt,
+        nextResendAt: new Date(Date.now() + OTP_RETRY_DELAYS_MS[0]),
+    });
+
+    await sendPasswordResetOtpEmail(user.email, user.full_name, otp);
+    return true;
+};
+
+const resendPasswordResetOtp = async (email) => {
+    const user = await repository.findByEmail(email);
+    if (!user || !user.is_verified) {
+        return true;
+    }
+	
+	const challenge = await repository.getActiveChallenge(email, CHALLENGE_TYPES.PASSWORD_RESET);
+    if (!challenge) throw new Error('No active OTP found. Please request a new one');
+
+    if (challenge.resend_count >= 2) {
+        throw new Error('OTP resend limit reached');
+    }
+
+    if (challenge.next_resend_at && new Date(challenge.next_resend_at) > new Date()) {
+        throw new Error('Please wait before requesting the OTP again');
+    }
+
+    const otp = generateOtpCode();
+    const otpHash = hashValue(`${email}:${otp}`);
+    const nextResendAt = new Date(Date.now() + OTP_RETRY_DELAYS_MS[Math.min(challenge.resend_count + 1, 1)]);
+
+    await repository.updatePasswordResetOtp(challenge.id, otpHash, nextResendAt);
+    await sendPasswordResetOtpEmail(user.email, user.full_name, otp);
+    return true;
+};
+
+const resetPassword = async (email, otp, newPassword) => {
+    const challenge = await repository.getActiveChallenge(email, CHALLENGE_TYPES.PASSWORD_RESET);
+    if (!challenge) throw new Error('Invalid or expired OTP');
+
+    if (challenge.attempt_count >= 3) {
+        await repository.expireChallenge(challenge.id);
+        throw new Error('OTP attempt limit reached');
+    }
+
+    const otpHash = hashValue(`${email}:${otp}`);
+    const validOtp = challenge.otp_hash === otpHash;
+
+    if (!validOtp) {
+        const updatedChallenge = await repository.incrementChallengeAttempt(challenge.id);
+        if (updatedChallenge.attempt_count >= 3) {
+            await repository.expireChallenge(challenge.id);
+        }
+        throw new Error('Invalid or expired OTP');
+    }
+
+    const passwordHash = await bcrypt.hash(newPassword, 12);
+    await db.withTransaction(async (client) => {
+        await repository.updatePasswordHashByEmail(email, passwordHash, client);
+        await repository.consumeChallenge(challenge.id, client);
+    });
+    return true;
+};
+
+module.exports = {
+    register,
+    login,
+    verifyUser,
+    requestPasswordReset,
+    resendPasswordResetOtp,
+    resetPassword,
+};

@@ -1,5 +1,5 @@
 const authService = require('./auth.service');
-const { registerSchema, loginSchema } = require('./auth.validation');
+const { registerSchema, loginSchema, forgotPasswordSchema, resetPasswordSchema } = require('./auth.validation');
 const { setTokens, clearTokens } = require('../../utils/cookie.util');
 
 const register = async (req, res, next) => {
@@ -53,4 +53,34 @@ const logout = (req, res, next) => {
     res.success(null, 'Logged out successfully');
 };
 
-module.exports = { register, verifyEmail, login, logout };
+const forgotPassword = async (req, res, next) => {
+    try {
+        const parsedBody = forgotPasswordSchema.parse(req.body);
+        await authService.requestPasswordReset(parsedBody.email);
+        res.success(null, 'If the account exists, an OTP has been sent to the registered email.');
+    } catch (err) {
+        next(err);
+    }
+};
+
+const resendForgotPasswordOtp = async (req, res, next) => {
+    try {
+        const parsedBody = forgotPasswordSchema.parse(req.body);
+        await authService.resendPasswordResetOtp(parsedBody.email);
+        res.success(null, 'OTP resent successfully.');
+    } catch (err) {
+        next(err);
+    }
+};
+
+const resetPassword = async (req, res, next) => {
+    try {
+        const parsedBody = resetPasswordSchema.parse(req.body);
+        await authService.resetPassword(parsedBody.email, parsedBody.otp, parsedBody.newPassword);
+        res.success(null, 'Password reset successfully.');
+    } catch (err) {
+        next(err);
+    }
+};
+
+module.exports = { register, verifyEmail, login, logout, forgotPassword, resendForgotPasswordOtp, resetPassword };

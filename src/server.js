@@ -16,6 +16,7 @@ const pengurusRoutes = require('./modules/pengurus/pengurus.routes');
 const activityRoutes = require('./modules/activities/activity.routes');
 const userRoutes = require('./modules/users/user.routes');
 const { initCronJobs } = require('./cron/penalty.cron');
+const { initAuthCronJobs } = require('./cron/auth.cron');
 const responseHandler = require('./middlewares/response.middleware');
 const { initSocket } = require('./config/socket');
 
@@ -25,6 +26,7 @@ const server = http.createServer(app);
 app.use(responseHandler);
 
 initCronJobs();
+initAuthCronJobs();
 
 // Middlewares
 app.use(helmet());

@@ -6,13 +6,35 @@ CREATE TABLE users (
     full_name VARCHAR(255) NOT NULL,
     role VARCHAR(50) DEFAULT 'member' CHECK (role IN ('member', 'pengurus')),
     is_verified BOOLEAN DEFAULT FALSE,
-    verification_token VARCHAR(255),
     monthly_price NUMERIC(10, 2) NOT NULL DEFAULT 300000,
     penalty_amount NUMERIC(10, 2) DEFAULT 0, -- Stacks 5k for missed tap-outs
 	profile_image_url VARCHAR(255) NOT NULL,
+    verified_at TIMESTAMP WITH TIME ZONE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
+
+-- Auth Challenges (Email verification & password reset OTP)
+CREATE TABLE auth_challenges (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    email VARCHAR(255) NOT NULL,
+    user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+    challenge_type VARCHAR(50) NOT NULL CHECK (challenge_type IN ('EMAIL_VERIFICATION', 'PASSWORD_RESET')),
+    token_hash VARCHAR(255),
+    otp_hash VARCHAR(255),
+    status VARCHAR(20) NOT NULL DEFAULT 'PENDING' CHECK (status IN ('PENDING', 'CONSUMED', 'EXPIRED')),
+    attempt_count INTEGER NOT NULL DEFAULT 0,
+    resend_count INTEGER NOT NULL DEFAULT 0,
+    next_resend_at TIMESTAMP WITH TIME ZONE,
+    expires_at TIMESTAMP WITH TIME ZONE NOT NULL,
+    consumed_at TIMESTAMP WITH TIME ZONE,
+    expired_at TIMESTAMP WITH TIME ZONE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX idx_auth_challenges_email_type_status ON auth_challenges (email, challenge_type, status);
+CREATE INDEX idx_auth_challenges_expires_at ON auth_challenges (expires_at);
 
 -- Active Memberships
 CREATE TABLE memberships (
