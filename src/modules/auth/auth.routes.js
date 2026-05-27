@@ -7,5 +7,8 @@ router.post('/register', upload.single('image'), controller.register);
 router.get('/verify-email/:token', controller.verifyEmail);
 router.post('/login', controller.login);
 router.post('/logout', controller.logout);
+router.post('/forgot-password', controller.forgotPassword);
+router.post('/forgot-password/resend', controller.resendForgotPasswordOtp);
+router.post('/forgot-password/reset', controller.resetPassword);
 
 module.exports = router;
