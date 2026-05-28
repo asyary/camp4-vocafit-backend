@@ -11,6 +11,10 @@ const PRICING = {
     GROUP_FITNESS_3: 375000  // 10 sessions for 3
 };
 
+const MIDTRANS_SUCCESS_STATUSES = new Set(['capture', 'settlement']);
+const MIDTRANS_FAILURE_STATUSES = new Set(['deny', 'expire', 'cancel']);
+const MIDTRANS_REVERSAL_STATUSES = new Set(['refund', 'partial_refund', 'chargeback']);
+
 const createPayment = async (userId, payload) => {
     const user = await repository.getUserForTransaction(userId);
     if (!user) throw new Error('User not found');
@@ -141,29 +145,65 @@ const handleMidtransWebhook = async (notificationPayload) => {
         throw new Error('Transaction not found in database.');
     }
 
-    // If already processed, ignore to prevent duplicate processing
-    if (transaction.status === 'SUCCESS' || transaction.status === 'FAILED') {
-        return { message: 'Transaction already processed' };
+    if (transaction.status === 'REFUNDED') {
+        return { message: 'Transaction already refunded' };
     }
 
-    // Evaluate Status
-    // Midtrans sends 'settlement' or 'capture' for successful payments
-    if (transaction_status === 'capture' || transaction_status === 'settlement') {
+    if (MIDTRANS_SUCCESS_STATUSES.has(transaction_status)) {
         if (fraud_status === 'challenge') {
             // Payment is flagged by Midtrans fraud detection, manual intervention needed
             return { message: 'Payment challenged by FDS' };
-        } else {
+        }
+
+        // Treat 'capture' as provisional for card transactions
+        if (transaction_status === 'capture') {
+            return { message: 'Capture received — awaiting settlement' };
+        }
+
+        // Only apply the success side-effects when settlement is confirmed
+        if (transaction_status === 'settlement') {
+            if (transaction.status === 'SUCCESS') {
+                return { message: 'Transaction already processed' };
+            }
+
             await repository.processSuccessfulPayment(transaction);
+            // mark settled_at to indicate funds were transferred
+            await repository.updateTransactionSettledAt(transaction.id, new Date());
             return { message: 'Payment processed successfully' };
         }
-    } else if (
-        transaction_status === 'cancel' || 
-        transaction_status === 'deny' || 
-        transaction_status === 'expire'
-    ) {
+    }
+
+    if (MIDTRANS_REVERSAL_STATUSES.has(transaction_status)) {
+        if (transaction.status === 'SUCCESS') {
+            await repository.processRefundedPayment(transaction.id);
+            return { message: 'Payment reversed/refunded successfully' };
+        }
+
+        if (transaction.status === 'REFUNDED') {
+            return { message: 'Transaction already refunded' };
+        }
+
+        return { message: 'Ignoring stale refund/cancel webhook' };
+    }
+
+    if (MIDTRANS_FAILURE_STATUSES.has(transaction_status)) {
+        if (transaction.status === 'FAILED') {
+            return { message: 'Transaction already failed' };
+        }
+
+        if (transaction.status === 'SUCCESS' || transaction.status === 'REFUNDED') {
+            return { message: 'Ignoring stale failure webhook' };
+        }
+
         await repository.processFailedPayment(transaction.id);
         return { message: 'Payment marked as failed/expired' };
-    } else if (transaction_status === 'pending') {
+    }
+
+    if (transaction_status === 'pending') {
+		if (transaction.status !== 'PENDING') {
+			return { message: 'Ignoring stale pending webhook' };
+		}
+
 		// payment_type is cstore for Indomaret/Alfamart
 		await repository.updateTransactionExpiry(transaction.id, new Date(Date.now() + 30 * 60 * 1000));
         return { message: 'Payment pending funds' };
