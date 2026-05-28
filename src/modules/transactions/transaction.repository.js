@@ -14,7 +14,7 @@ const createTransaction = async (data) => {
     
     const { rows } = await db.query(
         `INSERT INTO transactions 
-        (user_id, amount, payment_method, transaction_type, midtrans_order_id, expire_at, payment_url, snap_token) 
+        (user_id, amount, payment_method, transaction_type, order_id, expire_at, payment_url, snap_token) 
         VALUES ($1, $2, $3, $4, $5, $6, $7, $8) 
         RETURNING *`,
         [userId, amount, paymentMethod, transactionType, orderId, expireAt, paymentUrl, snapToken]
@@ -54,7 +54,7 @@ const updateTransactionExpiry = async (transactionId, expireAt) => {
 
 const getTransactionByOrderId = async (orderId) => {
     const { rows } = await db.query(
-        'SELECT * FROM transactions WHERE midtrans_order_id = $1',
+        'SELECT * FROM transactions WHERE order_id = $1',
         [orderId]
     );
     return rows[0];
