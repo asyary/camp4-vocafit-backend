@@ -38,7 +38,7 @@ const requireMembership = async (req, res, next) => {
 
     try {
         const result = await db.query(
-            'SELECT 1 FROM memberships WHERE user_id = $1 AND end_date > NOW()',
+            'SELECT 1 FROM memberships WHERE user_id = $1 AND end_date > NOW() AND canceled_at IS NULL',
             [req.user.id]
         );
 
