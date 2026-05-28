@@ -27,21 +27,22 @@ const getLatestMembershipEndDate = async (userId) => {
     const { rows } = await db.query(
         `SELECT MAX(end_date) AS latest_end_date
          FROM memberships
-         WHERE user_id = $1`,
+         WHERE user_id = $1
+           AND canceled_at IS NULL`,
         [userId]
     );
     return rows[0]?.latest_end_date || null;
 };
 
 const createTransaction = async (data) => {
-    const { userId, amount, paymentMethod, transactionType, expireAt, orderId, paymentUrl, snapToken } = data;
+    const { userId, amount, paymentMethod, transactionType, expireAt, orderId, paymentUrl, snapToken, penaltyAmount } = data;
     
     const { rows } = await db.query(
         `INSERT INTO transactions 
-        (user_id, amount, payment_method, transaction_type, order_id, expire_at, payment_url, snap_token) 
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8) 
+        (user_id, amount, payment_method, transaction_type, order_id, expire_at, payment_url, snap_token, penalty_amount) 
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) 
         RETURNING *`,
-        [userId, amount, paymentMethod, transactionType, orderId, expireAt, paymentUrl, snapToken]
+        [userId, amount, paymentMethod, transactionType, orderId, expireAt, paymentUrl, snapToken, penaltyAmount || 0]
     );
     return rows[0];
 };
@@ -84,10 +85,42 @@ const updateTransactionSettledAt = async (transactionId, settledAt) => {
     return rows[0];
 };
 
+const cancelMembershipByTransactionId = async (client, transactionId) => {
+    const { rows } = await client.query(
+        'UPDATE memberships SET canceled_at = COALESCE(canceled_at, NOW()) WHERE transaction_id = $1 RETURNING *',
+        [transactionId]
+    );
+    return rows[0];
+};
+
+const restorePenaltyAmount = async (client, transaction) => {
+    const penaltyAmount = parseFloat(transaction.penalty_amount) || 0;
+
+    if (!penaltyAmount) return null;
+
+    const { rows } = await client.query(
+        'UPDATE users SET penalty_amount = COALESCE(penalty_amount, 0) + $1 WHERE id = $2 RETURNING *',
+        [penaltyAmount, transaction.user_id]
+    );
+
+    return rows[0];
+};
+
 const getTransactionByOrderId = async (orderId) => {
     const { rows } = await db.query(
         'SELECT * FROM transactions WHERE order_id = $1',
         [orderId]
+    );
+    return rows[0];
+};
+
+const getCashTransactionById = async (transactionId) => {
+    const { rows } = await db.query(
+        `SELECT *
+         FROM transactions
+         WHERE id = $1
+           AND payment_method = 'CASH'`,
+        [transactionId]
     );
     return rows[0];
 };
@@ -144,8 +177,8 @@ const processSuccessfulPayment = async (transaction) => {
 
             if (!exists) {
                 await client.query(
-                    `INSERT INTO memberships (user_id, type, start_date, end_date) VALUES ($1, $2, $3, $4)`,
-                    [transaction.user_id, type, startDate, endDate]
+                    `INSERT INTO memberships (user_id, transaction_id, type, start_date, end_date) VALUES ($1, $2, $3, $4, $5)`,
+                    [transaction.user_id, transaction.id, type, startDate, endDate]
                 );
             }
         }
@@ -165,10 +198,17 @@ const processFailedPayment = async (transactionId) => {
         // If already refunded, do not overwrite
         if (current.status === 'REFUNDED') return current;
 
-        // If success but not yet settled (settled_at IS NULL), allow reverting to FAILED
+        // If success but already settled, do not revert into FAILED
         if (current.status === 'SUCCESS' && current.settled_at) {
-            // already settled funds; do not mark as failed
             return current;
+        }
+
+        if (current.status === 'SUCCESS' && ['MEMBERSHIP_DAILY', 'MEMBERSHIP_MONTHLY'].includes(current.transaction_type)) {
+            await cancelMembershipByTransactionId(client, current.id);
+        }
+
+        if (current.status === 'SUCCESS') {
+            await restorePenaltyAmount(client, current);
         }
 
         const { rows } = await client.query(
@@ -190,6 +230,12 @@ const processRefundedPayment = async (transactionId) => {
         if (current.status !== 'SUCCESS') return current;
         if (!current.settled_at) return current;
 
+        if (['MEMBERSHIP_DAILY', 'MEMBERSHIP_MONTHLY'].includes(current.transaction_type)) {
+            await cancelMembershipByTransactionId(client, current.id);
+        }
+
+        await restorePenaltyAmount(client, current);
+
         const { rows } = await client.query(
             'UPDATE transactions SET status = $1 WHERE id = $2 RETURNING *',
             ['REFUNDED', transactionId]
@@ -207,8 +253,10 @@ module.exports = {
     getPendingCashTransactions,
     updateTransactionStatus,
     updateTransactionExpiry,
+	getCashTransactionById,
 	getTransactionByOrderId,
     processRefundedPayment,
     processSuccessfulPayment,
-    processFailedPayment
+    processFailedPayment,
+    updateTransactionSettledAt
 };

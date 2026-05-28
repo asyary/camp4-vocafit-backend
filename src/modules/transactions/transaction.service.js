@@ -92,7 +92,8 @@ const createPayment = async (userId, payload) => {
         orderId,
         expireAt,
         paymentUrl,
-        snapToken
+        snapToken,
+        penaltyAmount
     });
 
 	delete transaction.snap_token;
@@ -105,8 +106,7 @@ const getCashPayments = async () => {
 };
 
 const confirmCashPayment = async (transactionId, status) => {
-    const { rows } = await db.query('SELECT * FROM transactions WHERE id = $1 AND payment_method = $2', [transactionId, 'CASH']);
-    const transaction = rows[0];
+    const transaction = await repository.getCashTransactionById(transactionId);
     
     if (!transaction) throw new Error('Transaction not found or not a cash payment');
     if (transaction.status !== 'PENDING') throw new Error('Transaction is already processed');
@@ -155,22 +155,30 @@ const handleMidtransWebhook = async (notificationPayload) => {
             return { message: 'Payment challenged by FDS' };
         }
 
-        // Treat 'capture' as provisional for card transactions
-        if (transaction_status === 'capture') {
-            return { message: 'Capture received — awaiting settlement' };
+        if (transaction.status === 'FAILED') {
+            return { message: 'Ignoring stale success webhook' };
         }
 
-        // Only apply the success side-effects when settlement is confirmed
-        if (transaction_status === 'settlement') {
-            if (transaction.status === 'SUCCESS') {
-                return { message: 'Transaction already processed' };
-            }
+        if (transaction.status === 'REFUNDED') {
+            return { message: 'Transaction already refunded' };
+        }
 
+        // Apply business side-effects as soon as payment is captured/settled.
+        // 'capture' is considered successful by Midtrans, even if funds are not settled yet.
+        if (transaction.status !== 'SUCCESS') {
             await repository.processSuccessfulPayment(transaction);
-            // mark settled_at to indicate funds were transferred
-            await repository.updateTransactionSettledAt(transaction.id, new Date());
-            return { message: 'Payment processed successfully' };
         }
+
+        if (transaction_status === 'settlement' && !transaction.settled_at) {
+            await repository.updateTransactionSettledAt(transaction.id, new Date());
+            return { message: 'Payment settled successfully' };
+        }
+
+        if (transaction_status === 'capture') {
+            return { message: 'Payment captured successfully' };
+        }
+
+        return { message: 'Payment processed successfully' };
     }
 
     if (MIDTRANS_REVERSAL_STATUSES.has(transaction_status)) {
@@ -191,7 +199,11 @@ const handleMidtransWebhook = async (notificationPayload) => {
             return { message: 'Transaction already failed' };
         }
 
-        if (transaction.status === 'SUCCESS' || transaction.status === 'REFUNDED') {
+        if (transaction.status === 'REFUNDED') {
+            return { message: 'Ignoring stale failure webhook' };
+        }
+
+        if (transaction.status === 'SUCCESS' && transaction.settled_at) {
             return { message: 'Ignoring stale failure webhook' };
         }
 
