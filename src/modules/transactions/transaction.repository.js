@@ -9,6 +9,30 @@ const getUserForTransaction = async (userId) => {
     return rows[0];
 };
 
+const getActiveOrderByUserId = async (userId) => {
+    const { rows } = await db.query(
+        `SELECT *
+         FROM transactions
+         WHERE user_id = $1
+           AND status = 'PENDING'
+           AND (expire_at IS NULL OR expire_at > NOW())
+         ORDER BY created_at DESC
+         LIMIT 1`,
+        [userId]
+    );
+    return rows[0];
+};
+
+const getLatestMembershipEndDate = async (userId) => {
+    const { rows } = await db.query(
+        `SELECT MAX(end_date) AS latest_end_date
+         FROM memberships
+         WHERE user_id = $1`,
+        [userId]
+    );
+    return rows[0]?.latest_end_date || null;
+};
+
 const createTransaction = async (data) => {
     const { userId, amount, paymentMethod, transactionType, expireAt, orderId, paymentUrl, snapToken } = data;
     
@@ -77,14 +101,20 @@ const processSuccessfulPayment = async (transaction) => {
 
     // 3. Grant Membership if applicable
     if (['MEMBERSHIP_DAILY', 'MEMBERSHIP_MONTHLY'].includes(transaction.transaction_type)) {
-        const startDate = new Date();
+        const latestMembershipEndDate = await getLatestMembershipEndDate(transaction.user_id);
+        const now = new Date();
+        const startDate = latestMembershipEndDate && new Date(latestMembershipEndDate) > now
+            ? new Date(latestMembershipEndDate)
+            : now;
         const endDate = new Date();
 
         if (transaction.transaction_type === 'MEMBERSHIP_DAILY') {
-            // Expires at 23:59:59 today
+            // Expires at 23:59:59 on the membership start date
+            endDate.setTime(startDate.getTime());
             endDate.setHours(23, 59, 59, 999);
         } else if (transaction.transaction_type === 'MEMBERSHIP_MONTHLY') {
-            // Expires in 30 days
+            // Expires 30 days after the membership start date
+            endDate.setTime(startDate.getTime());
             endDate.setDate(endDate.getDate() + 30);
         }
 
@@ -107,6 +137,8 @@ const processFailedPayment = async (transactionId) => {
 
 module.exports = { 
     getUserForTransaction, 
+    getActiveOrderByUserId,
+    getLatestMembershipEndDate,
     createTransaction, 
     getPendingCashTransactions,
     updateTransactionStatus,

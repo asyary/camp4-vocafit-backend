@@ -15,6 +15,15 @@ const createPayment = async (userId, payload) => {
     const user = await repository.getUserForTransaction(userId);
     if (!user) throw new Error('User not found');
 
+    const activeOrder = await repository.getActiveOrderByUserId(userId);
+    if (activeOrder) {
+        const err = new Error('You already have an active order');
+        err.status = 409;
+        err.data = { ...activeOrder };
+        delete err.data.snap_token;
+        throw err;
+    }
+
     // Calculate Base Price
     let basePrice = 0;
     if (payload.transactionType === 'MEMBERSHIP_MONTHLY') {
