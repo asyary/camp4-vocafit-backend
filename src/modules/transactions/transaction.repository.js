@@ -76,6 +76,14 @@ const updateTransactionExpiry = async (transactionId, expireAt) => {
 	return rows[0];
 };
 
+const updateTransactionSettledAt = async (transactionId, settledAt) => {
+    const { rows } = await db.query(
+        'UPDATE transactions SET settled_at = $1 WHERE id = $2 RETURNING *',
+        [settledAt, transactionId]
+    );
+    return rows[0];
+};
+
 const getTransactionByOrderId = async (orderId) => {
     const { rows } = await db.query(
         'SELECT * FROM transactions WHERE order_id = $1',
@@ -84,55 +92,111 @@ const getTransactionByOrderId = async (orderId) => {
     return rows[0];
 };
 
+const lockTransactionForUpdate = async (client, transactionId) => {
+    const { rows } = await client.query(
+        'SELECT * FROM transactions WHERE id = $1 FOR UPDATE',
+        [transactionId]
+    );
+
+    return rows[0];
+};
+
 const processSuccessfulPayment = async (transaction) => {
-    // Sequentially exec queries with BEGIN/COMMIT for atomic transactions
-    
-    // 1. Update Transaction Status
-    await db.query(
-        'UPDATE transactions SET status = $1 WHERE id = $2',
-        ['SUCCESS', transaction.id]
-    );
+    // Make processing atomic and idempotent using a DB transaction
+    return await db.withTransaction(async (client) => {
+        const current = await lockTransactionForUpdate(client, transaction.id);
+        if (!current) throw new Error('Transaction not found');
 
-    // 2. Reset User's Penalty Amount (since it was paid in this transaction)
-    await db.query(
-        'UPDATE users SET penalty_amount = 0 WHERE id = $1',
-        [transaction.user_id]
-    );
+        // If already settled or refunded, do not re-apply the success side effects.
+        if (current.status === 'SUCCESS' || current.status === 'REFUNDED') return current;
 
-    // 3. Grant Membership if applicable
-    if (['MEMBERSHIP_DAILY', 'MEMBERSHIP_MONTHLY'].includes(transaction.transaction_type)) {
-        const latestMembershipEndDate = await getLatestMembershipEndDate(transaction.user_id);
-        const now = new Date();
-        const startDate = latestMembershipEndDate && new Date(latestMembershipEndDate) > now
-            ? new Date(latestMembershipEndDate)
-            : now;
-        const endDate = new Date();
+        // 1. Update Transaction Status
+        await client.query('UPDATE transactions SET status = $1 WHERE id = $2', ['SUCCESS', transaction.id]);
 
-        if (transaction.transaction_type === 'MEMBERSHIP_DAILY') {
-            // Expires at 23:59:59 on the membership start date
-            endDate.setTime(startDate.getTime());
-            endDate.setHours(23, 59, 59, 999);
-        } else if (transaction.transaction_type === 'MEMBERSHIP_MONTHLY') {
-            // Expires 30 days after the membership start date
-            endDate.setTime(startDate.getTime());
-            endDate.setDate(endDate.getDate() + 30);
+        // 2. Reset User's Penalty Amount (since it was paid in this transaction)
+        await client.query('UPDATE users SET penalty_amount = 0 WHERE id = $1', [transaction.user_id]);
+
+        // 3. Grant Membership if applicable (avoid duplicate membership insert)
+        if (['MEMBERSHIP_DAILY', 'MEMBERSHIP_MONTHLY'].includes(transaction.transaction_type)) {
+            const { rows: latestRows } = await client.query(
+                `SELECT MAX(end_date) AS latest_end_date FROM memberships WHERE user_id = $1`,
+                [transaction.user_id]
+            );
+            const latestMembershipEndDate = latestRows[0]?.latest_end_date || null;
+            const now = new Date();
+            const startDate = latestMembershipEndDate && new Date(latestMembershipEndDate) > now
+                ? new Date(latestMembershipEndDate)
+                : now;
+            const endDate = new Date(startDate.getTime());
+
+            if (transaction.transaction_type === 'MEMBERSHIP_DAILY') {
+                endDate.setHours(23, 59, 59, 999);
+            } else if (transaction.transaction_type === 'MEMBERSHIP_MONTHLY') {
+                endDate.setDate(endDate.getDate() + 30);
+            }
+
+            const type = transaction.transaction_type.split('_')[1].toLowerCase();
+
+            const { rowCount: exists } = await client.query(
+                `SELECT 1 FROM memberships WHERE user_id = $1 AND type = $2 AND start_date = $3 AND end_date = $4 LIMIT 1`,
+                [transaction.user_id, type, startDate, endDate]
+            );
+
+            if (!exists) {
+                await client.query(
+                    `INSERT INTO memberships (user_id, type, start_date, end_date) VALUES ($1, $2, $3, $4)`,
+                    [transaction.user_id, type, startDate, endDate]
+                );
+            }
         }
 
-        await db.query(
-            `INSERT INTO memberships (user_id, type, start_date, end_date) 
-             VALUES ($1, $2, $3, $4)`,
-            [transaction.user_id, transaction.transaction_type.split('_')[1].toLowerCase(), startDate, endDate]
-        );
-    }
-    
-    // Might QoL update: PT_SESSION and GROUP_FITNESS can insert into a `user_packages` table
+        return { ...current, status: 'SUCCESS' };
+    });
 };
 
 const processFailedPayment = async (transactionId) => {
-    await db.query(
-        'UPDATE transactions SET status = $1 WHERE id = $2',
-        ['FAILED', transactionId]
-    );
+    return await db.withTransaction(async (client) => {
+        const current = await lockTransactionForUpdate(client, transactionId);
+        if (!current) throw new Error('Transaction not found');
+
+        // If already failed, return
+        if (current.status === 'FAILED') return current;
+
+        // If already refunded, do not overwrite
+        if (current.status === 'REFUNDED') return current;
+
+        // If success but not yet settled (settled_at IS NULL), allow reverting to FAILED
+        if (current.status === 'SUCCESS' && current.settled_at) {
+            // already settled funds; do not mark as failed
+            return current;
+        }
+
+        const { rows } = await client.query(
+            'UPDATE transactions SET status = $1 WHERE id = $2 RETURNING *',
+            ['FAILED', transactionId]
+        );
+
+        return rows[0];
+    });
+};
+
+const processRefundedPayment = async (transactionId) => {
+    return await db.withTransaction(async (client) => {
+        const current = await lockTransactionForUpdate(client, transactionId);
+        if (!current) throw new Error('Transaction not found');
+
+        // Refunds only make sense after a successful and settled payment.
+        if (current.status === 'REFUNDED') return current;
+        if (current.status !== 'SUCCESS') return current;
+        if (!current.settled_at) return current;
+
+        const { rows } = await client.query(
+            'UPDATE transactions SET status = $1 WHERE id = $2 RETURNING *',
+            ['REFUNDED', transactionId]
+        );
+
+        return rows[0];
+    });
 };
 
 module.exports = { 
@@ -144,6 +208,7 @@ module.exports = {
     updateTransactionStatus,
     updateTransactionExpiry,
 	getTransactionByOrderId,
+    processRefundedPayment,
     processSuccessfulPayment,
     processFailedPayment
 };
