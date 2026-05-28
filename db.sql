@@ -52,7 +52,7 @@ CREATE TABLE transactions (
     user_id UUID REFERENCES users(id) ON DELETE SET NULL,
     amount NUMERIC(10, 2) NOT NULL,
     payment_method VARCHAR(50) CHECK (payment_method IN ('QRIS', 'CASH')),
-    status VARCHAR(50) DEFAULT 'PENDING' CHECK (status IN ('PENDING', 'SUCCESS', 'FAILED')),
+    status VARCHAR(50) DEFAULT 'PENDING' CHECK (status IN ('PENDING', 'SUCCESS', 'FAILED', 'REFUNDED')),
     transaction_type VARCHAR(50) CHECK (transaction_type IN ('MEMBERSHIP_DAILY', 'MEMBERSHIP_MONTHLY', 'PT_SESSION', 'GROUP_FITNESS')),
 	order_id VARCHAR(255),
 	payment_url VARCHAR(255),
