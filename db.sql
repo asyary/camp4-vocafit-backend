@@ -40,9 +40,11 @@ CREATE INDEX idx_auth_challenges_expires_at ON auth_challenges (expires_at);
 CREATE TABLE memberships (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+    transaction_id UUID UNIQUE,
     type VARCHAR(20) CHECK (type IN ('daily', 'monthly')),
     start_date TIMESTAMP WITH TIME ZONE NOT NULL,
     end_date TIMESTAMP WITH TIME ZONE NOT NULL,
+    canceled_at TIMESTAMP WITH TIME ZONE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -53,6 +55,7 @@ CREATE TABLE transactions (
     amount NUMERIC(10, 2) NOT NULL,
     payment_method VARCHAR(50) CHECK (payment_method IN ('QRIS', 'CASH')),
     status VARCHAR(50) DEFAULT 'PENDING' CHECK (status IN ('PENDING', 'SUCCESS', 'FAILED', 'REFUNDED')),
+    penalty_amount NUMERIC(10, 2) DEFAULT 0,
     transaction_type VARCHAR(50) CHECK (transaction_type IN ('MEMBERSHIP_DAILY', 'MEMBERSHIP_MONTHLY', 'PT_SESSION', 'GROUP_FITNESS')),
 	order_id VARCHAR(255),
 	payment_url VARCHAR(255),
@@ -61,6 +64,10 @@ CREATE TABLE transactions (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
 	settled_at TIMESTAMP WITH TIME ZONE
 );
+
+ALTER TABLE memberships
+    ADD CONSTRAINT fk_memberships_transaction
+    FOREIGN KEY (transaction_id) REFERENCES transactions(id) ON DELETE SET NULL;
 
 -- Gym Visits (Tap In/Out & Crowd Meter)
 CREATE TABLE gym_visits (
