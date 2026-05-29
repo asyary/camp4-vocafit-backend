@@ -4,7 +4,7 @@ const { getCachedCatalogPrice } = require('../../utils/pricing-cache.util');
 
 const getUserForTransaction = async (userId) => {
     const { rows } = await db.query(
-        'SELECT id, email, full_name, membership_price_code, penalty_amount FROM users WHERE id = $1',
+        'SELECT id, email, full_name, membership_price_code, penalty_amount FROM users WHERE id = $1 AND is_verified = TRUE',
         [userId]
     );
     return rows[0];
@@ -57,17 +57,6 @@ const getActiveOrderByUserId = async (userId) => {
     return rows[0];
 };
 
-const getLatestMembershipEndDate = async (userId) => {
-    const { rows } = await db.query(
-        `SELECT MAX(end_date) AS latest_end_date
-         FROM memberships
-         WHERE user_id = $1
-           AND canceled_at IS NULL`,
-        [userId]
-    );
-    return rows[0]?.latest_end_date || null;
-};
-
 const createTransaction = async (data) => {
     const { userId, amount, paymentMethod, transactionType, transactionFamily, expireAt, orderId, paymentUrl, snapToken, penaltyAmount } = data;
     
@@ -91,21 +80,13 @@ const getPendingCashTransactions = async () => {
     const { rows } = await db.query(
         `SELECT t.*, u.full_name, u.email 
          FROM transactions t
-         JOIN users u ON t.user_id = u.id
+         JOIN users u ON t.user_id = u.id AND u.is_verified = TRUE
          WHERE t.payment_method = 'CASH' 
          AND t.status = 'PENDING' 
          AND t.expire_at > NOW()
          ORDER BY t.created_at ASC`
     );
     return rows;
-};
-
-const updateTransactionStatus = async (transactionId, status) => {
-    const { rows } = await db.query(
-        'UPDATE transactions SET status = $1 WHERE id = $2 RETURNING *',
-        [status, transactionId]
-    );
-    return rows[0];
 };
 
 const updateTransactionExpiry = async (transactionId, expireAt) => {
@@ -201,9 +182,21 @@ const processSuccessfulPayment = async (transaction) => {
                 : now;
             const endDate = new Date(startDate.getTime());
 
-            if (transaction.transaction_type === 'MEMBERSHIP_DAILY') {
+            // Determine membership duration from the pricing_catalog so durations are data-driven
+            const { rows: catalogRows } = await client.query(
+                `SELECT duration_days FROM pricing_catalog WHERE code = $1 AND is_active = TRUE`,
+                [transaction.transaction_type]
+            );
+            const durationDays = catalogRows[0] ? parseInt(catalogRows[0].duration_days, 10) : null;
+
+            if (durationDays === 1) {
+                // Single-day membership: end at end of day
                 endDate.setHours(23, 59, 59, 999);
-            } else if (transaction.transaction_type === 'MEMBERSHIP_MONTHLY') {
+            } else if (Number.isInteger(durationDays) && durationDays > 0) {
+                // Multi-day membership: add specified duration
+                endDate.setDate(endDate.getDate() + durationDays);
+            } else {
+                // Fallback: default to 30 days if catalog is missing or invalid
                 endDate.setDate(endDate.getDate() + 30);
             }
 
@@ -289,10 +282,8 @@ module.exports = {
     getActiveOrderByUserId,
     getPricingCatalogItem,
     getPricingCatalogPrice,
-    getLatestMembershipEndDate,
     createTransaction, 
     getPendingCashTransactions,
-    updateTransactionStatus,
     updateTransactionExpiry,
 	getCashTransactionById,
 	getTransactionByOrderId,

@@ -1,5 +1,4 @@
 const db = require('../../config/db');
-const { getCachedCatalogPrice } = require('../../utils/pricing-cache.util');
 
 const queryWith = (executor, text, params) => executor.query(text, params);
 
@@ -13,28 +12,6 @@ const findByEmail = async (email) => {
         [email]
     );
     return rows[0];
-};
-
-const getCatalogPrice = async (catalogCode, tierCode, executor = db) => {
-    return await getCachedCatalogPrice({
-        catalogCode,
-        tierCode,
-        fetchPrice: async () => {
-            const { rows } = await queryWith(
-                executor,
-                `SELECT p.price
-                 FROM pricing_catalog_prices p
-                 JOIN pricing_catalog c ON c.code = p.catalog_code
-                 WHERE c.code = $1
-                   AND p.account_tier_code = $2
-                   AND c.is_active = TRUE
-                 LIMIT 1`,
-                [catalogCode, tierCode]
-            );
-
-            return rows[0]?.price ?? null;
-        }
-    });
 };
 
 const createUser = async (userData, executor = db) => {
@@ -103,18 +80,6 @@ const countChallengesCreatedToday = async (email, challengeType) => {
         [email, challengeType]
     );
     return rows[0]?.total ?? 0;
-};
-
-const getLatestChallenge = async (email, challengeType) => {
-    const { rows } = await db.query(
-        `SELECT *
-         FROM auth_challenges
-         WHERE email = $1 AND challenge_type = $2
-         ORDER BY created_at DESC
-         LIMIT 1`,
-        [email, challengeType]
-    );
-    return rows[0];
 };
 
 const getActiveChallenge = async (email, challengeType) => {
@@ -256,7 +221,6 @@ module.exports = {
     updateUnverifiedUser,
     markUserVerified,
     countChallengesCreatedToday,
-    getLatestChallenge,
     getActiveChallenge,
     getVerificationChallengeByTokenHash,
     createChallenge,
@@ -266,5 +230,4 @@ module.exports = {
     incrementChallengeAttempt,
     updatePasswordResetOtp,
     updatePasswordHashByEmail,
-    getCatalogPrice,
 };

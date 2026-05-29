@@ -1,70 +1,8 @@
 const service = require('./pengurus.service');
-const { newsSchema, trainerSchema, scheduleSchema, updateUserSchema, imageSchema } = require('./pengurus.validation');
+const { createUserSchema, updateUserSchema, imageSchema } = require('./pengurus.validation');
 const { paginationSchema } = require('../../utils/validation.util');
 const { uploadToCloudinary } = require('../../utils/cloudinary.util');
 const db = require('../../config/db');
-
-const createNews = async (req, res, next) => {
-    try {
-        const parsedBody = newsSchema.parse(req.body);
-        const fileBuffer = req.file ? req.file.buffer : null;
-        
-        const news = await service.addNews({ ...parsedBody, authorId: req.user.id }, fileBuffer);
-        res.success(news, 'News created successfully', 201);
-    } catch (err) {
-        next(err);
-    }
-};
-
-const getNews = async (req, res, next) => {
-    try {
-        const { page, limit } = paginationSchema.parse(req.query);
-        const result = await service.getNews(page, limit);
-        res.success(result.data, 'News retrieved successfully', 200, { page, limit, total: result.total_pages });
-    } catch (err) {
-        next(err);
-    }
-};
-
-const deleteNews = async (req, res, next) => {
-    try {
-        await service.removeNews(req.params.id);
-        res.success(null, 'News deleted successfully');
-    } catch (err) {
-        next(err);
-    }
-};
-
-const createTrainer = async (req, res, next) => {
-    try {
-        const parsedBody = trainerSchema.parse(req.body);
-        const fileBuffer = req.file ? req.file.buffer : null;
-
-        const trainer = await service.addTrainer(parsedBody, fileBuffer);
-        res.success(trainer, 'Trainer created successfully', 201);
-    } catch (err) {
-        next(err);
-    }
-};
-
-const getTrainers = async (req, res, next) => {
-    try {
-        const trainers = await service.getTrainers();
-        res.success(trainers, 'Trainers retrieved successfully');
-    } catch (err) {
-        next(err);
-    }
-};
-
-const createSchedule = async (req, res, next) => {
-    try {
-        const parsedBody = scheduleSchema.parse(req.body);
-        const schedule = await service.addSchedule(parsedBody);
-        res.success(schedule, 'Schedule created successfully', 201);
-    } catch (err) {
-        next(err);
-    }
-};
 
 const getUsers = async (req, res, next) => {
     try {
@@ -73,6 +11,27 @@ const getUsers = async (req, res, next) => {
         const result = await service.getUsersList(page, limit);
         
         res.success(result.data, 'Users retrieved successfully', 200, { page, limit, total: result.total_pages });
+    } catch (err) {
+        next(err);
+    }
+};
+
+const getUser = async (req, res, next) => {
+    try {
+        const user = await service.getUserById(req.params.id);
+        res.success(user, 'User retrieved successfully');
+    } catch (err) {
+        next(err);
+    }
+};
+
+const createUser = async (req, res, next) => {
+    try {
+        const parsedBody = createUserSchema.parse(req.body);
+        const fileBuffer = req.file ? req.file.buffer : null;
+
+        const user = await service.addUser(parsedBody, fileBuffer);
+        res.success(user, 'User created successfully', 201);
     } catch (err) {
         next(err);
     }
@@ -97,7 +56,7 @@ const updateUserImage = async (req, res, next) => {
         const imageUrl = await uploadToCloudinary(parsedFile.buffer, 'users');
         
         const { rows } = await db.query(
-            'UPDATE users SET profile_image_url = $1 WHERE id = $2 RETURNING id, full_name, profile_image_url',
+            'UPDATE users SET profile_image_url = $1 WHERE id = $2 AND is_verified = TRUE RETURNING id, full_name, profile_image_url',
             [imageUrl, req.params.id]
         );
         
@@ -109,8 +68,15 @@ const updateUserImage = async (req, res, next) => {
     }
 };
 
+const deleteUser = async (req, res, next) => {
+    try {
+        const invalidatedUser = await service.removeUser(req.params.id);
+        res.success(invalidatedUser, 'User invalidated successfully');
+    } catch (err) {
+        next(err);
+    }
+};
+
 module.exports = {
-    createNews, getNews, deleteNews,
-    createTrainer, getTrainers, createSchedule,
-    getUsers, updateUser, updateUserImage
+    getUsers, getUser, createUser, updateUser, deleteUser, updateUserImage
 };

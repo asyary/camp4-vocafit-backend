@@ -27,12 +27,6 @@ const generateVerificationToken = () => crypto.randomBytes(32).toString('hex');
 
 const generateOtpCode = () => crypto.randomInt(0, 1000000).toString().padStart(6, '0');
 
-const startOfDay = () => {
-    const date = new Date();
-    date.setHours(0, 0, 0, 0);
-    return date;
-};
-
 const determineMembershipTier = async (email) => {
     const normalizedEmail = String(email || '').toLowerCase();
 
@@ -68,15 +62,16 @@ const determineMembershipTier = async (email) => {
 
 const register = async (data, fileBuffer) => {
     const existingUser = await repository.findByEmail(data.email);
-    if (existingUser?.is_verified) throw new Error('Email already registered');
-    
-	const activeVerification = await repository.getActiveChallenge(data.email, CHALLENGE_TYPES.EMAIL_VERIFICATION);
-    if (existingUser && !existingUser.is_verified && activeVerification) {
-        throw new Error('Please verify your previous registration first');
+    const activeVerification = existingUser && !existingUser.is_verified
+        ? await repository.getActiveChallenge(data.email, CHALLENGE_TYPES.EMAIL_VERIFICATION)
+        : null;
+
+    if (existingUser && (existingUser.is_verified || !activeVerification)) {
+        throw new Error('Email already registered');
     }
 
     const verificationsToday = await repository.countChallengesCreatedToday(data.email, CHALLENGE_TYPES.EMAIL_VERIFICATION);
-    if (verificationsToday >= 2 && (!existingUser || !existingUser.is_verified)) {
+    if (verificationsToday >= 2 && (!existingUser || (!existingUser.is_verified && !activeVerification))) {
         throw new Error('Daily registration limit reached. Please try again tomorrow');
     }
 
@@ -129,7 +124,7 @@ const login = async (data) => {
             throw new Error('Please verify your email first');
         }
 
-        throw new Error('Verification link expired, please register again');
+        throw new Error('Account is inactive');
     }
 
     const validPassword = await bcrypt.compare(data.password, user.password_hash);

@@ -1,7 +1,7 @@
 const { verifyAccessToken } = require('../utils/jwt.util');
 const db = require('../config/db');
 
-const requireAuth = (req, res, next) => {
+const requireAuth = async (req, res, next) => {
     const token = req.cookies.access_token;
     if (!token) {
         const err = new Error('Unauthorized');
@@ -11,7 +11,28 @@ const requireAuth = (req, res, next) => {
 
     try {
         const decoded = verifyAccessToken(token);
-        req.user = decoded;
+        const { rows } = await db.query(
+            `SELECT id, email, full_name, role, is_verified
+             FROM users
+             WHERE id = $1
+               AND is_verified = TRUE`,
+            [decoded.id]
+        );
+
+        const user = rows[0];
+        if (!user || !user.is_verified) {
+            const err = new Error('Invalid or expired token');
+            err.status = 401;
+            return next(err);
+        }
+
+        req.user = {
+            id: user.id,
+            email: user.email,
+            full_name: user.full_name,
+            role: user.role,
+            is_verified: user.is_verified,
+        };
         next();
     } catch (error) {
         const err = new Error('Invalid or expired token');

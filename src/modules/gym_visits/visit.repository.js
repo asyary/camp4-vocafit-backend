@@ -63,7 +63,7 @@ const applyPenaltyAndAutoTapOut = async () => {
 
 const getUserDetailsForSocket = async (userId) => {
     const { rows } = await db.query(
-        'SELECT id, full_name, profile_image_url FROM users WHERE id = $1',
+        'SELECT id, full_name, profile_image_url FROM users WHERE id = $1 AND is_verified = TRUE',
         [userId]
     );
     return rows[0];

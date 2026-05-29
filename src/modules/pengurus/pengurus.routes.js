@@ -9,7 +9,10 @@ router.use(requireAuth);
 router.use(requireRole('pengurus'));
 
 router.get('/users', controller.getUsers);
+router.get('/users/:id', controller.getUser);
+router.post('/users', upload.single('image'), controller.createUser);
 router.put('/users/:id', controller.updateUser);
+router.delete('/users/:id', controller.deleteUser);
 router.patch('/users/:id/image', upload.single('image'), controller.updateUserImage);
 
 module.exports = router;

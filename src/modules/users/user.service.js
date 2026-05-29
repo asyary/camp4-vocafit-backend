@@ -20,7 +20,9 @@ const updateMyProfile = async (userId, data) => {
 };
 
 const deleteMyAccount = async (userId) => {
-    await repository.deleteAccount(userId);
+    const invalidatedUser = await repository.invalidateAccount(userId);
+    if (!invalidatedUser) throw new Error('User not found');
+    return invalidatedUser;
 };
 
 module.exports = { getMyProfile, updateMyProfile, deleteMyAccount };

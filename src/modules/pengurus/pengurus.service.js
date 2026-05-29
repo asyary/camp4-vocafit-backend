@@ -1,5 +1,6 @@
 const repository = require('./pengurus.repository');
 const cloudinary = require('../../config/cloudinary');
+const bcrypt = require('bcrypt');
 
 const uploadToCloudinary = (fileBuffer, folder) => {
     return new Promise((resolve, reject) => {
@@ -13,43 +14,6 @@ const uploadToCloudinary = (fileBuffer, folder) => {
         stream.end(fileBuffer);
     });
 };
-
-const addNews = async (data, fileBuffer) => {
-    let imageUrl = null;
-    if (fileBuffer) {
-        imageUrl = await uploadToCloudinary(fileBuffer, 'news');
-    }
-    return await repository.createNews({ ...data, imageUrl });
-};
-
-const getNews = async (page, limit) => {
-    const offset = (page - 1) * limit;
-
-    const [news, totalCount] = await Promise.all([
-        repository.getAllNews(limit, offset),
-        repository.countAllNews()
-    ]);
-
-    return {
-        page,
-        limit,
-        total_pages: Math.ceil(totalCount / limit),
-        data: news
-    };
-};
-const removeNews = async (id) => await repository.deleteNews(id);
-
-const addTrainer = async (data, fileBuffer) => {
-    let imageUrl = null;
-    if (fileBuffer) {
-        imageUrl = await uploadToCloudinary(fileBuffer, 'trainers');
-    }
-    return await repository.createTrainer({ ...data, imageUrl });
-};
-
-const getTrainers = async () => await repository.getAllTrainers();
-const addSchedule = async (data) => await repository.createSchedule(data);
-const getSchedules = async (trainerId) => await repository.getSchedulesByTrainer(trainerId);
 
 const getUsersList = async (page, limit) => {
     const offset = (page - 1) * limit;
@@ -69,10 +33,39 @@ const getUsersList = async (page, limit) => {
         data: users
     };
 };
-const editUser = async (id, data) => await repository.updateUser(id, data);
+
+const getUserById = async (id) => {
+    const user = await repository.getUserById(id);
+    if (!user) throw new Error('User not found');
+    return user;
+};
+
+const addUser = async (data, fileBuffer) => {
+    if (!fileBuffer) throw new Error('User image is required');
+
+    const passwordHash = await bcrypt.hash(data.password, 12);
+    const imageUrl = await uploadToCloudinary(fileBuffer, 'users');
+
+    return await repository.createUser({
+        ...data,
+        passwordHash,
+        profileImageUrl: imageUrl,
+        penaltyAmount: data.penaltyAmount || 0
+    });
+};
+
+const editUser = async (id, data) => {
+    const updatedUser = await repository.updateUser(id, data);
+    if (!updatedUser) throw new Error('User not found');
+    return updatedUser;
+};
+
+const removeUser = async (id) => {
+    const invalidatedUser = await repository.invalidateUser(id);
+    if (!invalidatedUser) throw new Error('User not found');
+    return invalidatedUser;
+};
 
 module.exports = {
-    addNews, getNews, removeNews,
-    addTrainer, getTrainers, addSchedule, getSchedules,
-    getUsersList, editUser
+    getUsersList, getUserById, addUser, editUser, removeUser
 };
