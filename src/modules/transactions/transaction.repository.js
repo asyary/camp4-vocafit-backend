@@ -1,12 +1,46 @@
 // Berhati-hatilah bekerja disini hai kawand
 const db = require('../../config/db');
+const { getCachedCatalogPrice } = require('../../utils/pricing-cache.util');
 
 const getUserForTransaction = async (userId) => {
     const { rows } = await db.query(
-        'SELECT id, email, full_name, monthly_price, penalty_amount FROM users WHERE id = $1',
+        'SELECT id, email, full_name, membership_price_code, penalty_amount FROM users WHERE id = $1',
         [userId]
     );
     return rows[0];
+};
+
+const getPricingCatalogItem = async (catalogCode) => {
+    const { rows } = await db.query(
+        `SELECT code, family, name, group_size, session_count, duration_days
+         FROM pricing_catalog
+         WHERE code = $1
+           AND is_active = TRUE`,
+        [catalogCode]
+    );
+
+    return rows[0];
+};
+
+const getPricingCatalogPrice = async (catalogCode, tierCode) => {
+    return await getCachedCatalogPrice({
+        catalogCode,
+        tierCode,
+        fetchPrice: async () => {
+            const { rows } = await db.query(
+                `SELECT p.price
+                 FROM pricing_catalog_prices p
+                 JOIN pricing_catalog c ON c.code = p.catalog_code
+                 WHERE p.catalog_code = $1
+                   AND p.account_tier_code = $2
+                   AND c.is_active = TRUE
+                 LIMIT 1`,
+                [catalogCode, tierCode]
+            );
+
+            return rows[0]?.price ?? null;
+        }
+    });
 };
 
 const getActiveOrderByUserId = async (userId) => {
@@ -35,17 +69,22 @@ const getLatestMembershipEndDate = async (userId) => {
 };
 
 const createTransaction = async (data) => {
-    const { userId, amount, paymentMethod, transactionType, expireAt, orderId, paymentUrl, snapToken, penaltyAmount } = data;
+    const { userId, amount, paymentMethod, transactionType, transactionFamily, expireAt, orderId, paymentUrl, snapToken, penaltyAmount } = data;
     
     const { rows } = await db.query(
         `INSERT INTO transactions 
-        (user_id, amount, payment_method, transaction_type, order_id, expire_at, payment_url, snap_token, penalty_amount) 
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) 
+        (user_id, amount, payment_method, transaction_family, transaction_type, order_id, expire_at, payment_url, snap_token, penalty_amount) 
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) 
         RETURNING *`,
-        [userId, amount, paymentMethod, transactionType, orderId, expireAt, paymentUrl, snapToken, penaltyAmount || 0]
+        [userId, amount, paymentMethod, transactionFamily, transactionType, orderId, expireAt, paymentUrl, snapToken, penaltyAmount || 0]
     );
     return rows[0];
 };
+
+const isMembershipTransaction = (transaction) => (
+    transaction?.transaction_family === 'MEMBERSHIP' ||
+    String(transaction?.transaction_type || '').startsWith('MEMBERSHIP_')
+);
 
 const getPendingCashTransactions = async () => {
     // Only fetch cash transactions that haven't expired yet
@@ -150,7 +189,7 @@ const processSuccessfulPayment = async (transaction) => {
         await client.query('UPDATE users SET penalty_amount = 0 WHERE id = $1', [transaction.user_id]);
 
         // 3. Grant Membership if applicable (avoid duplicate membership insert)
-        if (['MEMBERSHIP_DAILY', 'MEMBERSHIP_MONTHLY'].includes(transaction.transaction_type)) {
+        if (isMembershipTransaction(transaction)) {
             const { rows: latestRows } = await client.query(
                 `SELECT MAX(end_date) AS latest_end_date FROM memberships WHERE user_id = $1`,
                 [transaction.user_id]
@@ -171,14 +210,14 @@ const processSuccessfulPayment = async (transaction) => {
             const type = transaction.transaction_type.split('_')[1].toLowerCase();
 
             const { rowCount: exists } = await client.query(
-                `SELECT 1 FROM memberships WHERE user_id = $1 AND type = $2 AND start_date = $3 AND end_date = $4 LIMIT 1`,
-                [transaction.user_id, type, startDate, endDate]
+                `SELECT 1 FROM memberships WHERE user_id = $1 AND plan_code = $2 AND start_date = $3 AND end_date = $4 LIMIT 1`,
+                [transaction.user_id, transaction.transaction_type, startDate, endDate]
             );
 
             if (!exists) {
                 await client.query(
-                    `INSERT INTO memberships (user_id, transaction_id, type, start_date, end_date) VALUES ($1, $2, $3, $4, $5)`,
-                    [transaction.user_id, transaction.id, type, startDate, endDate]
+                    `INSERT INTO memberships (user_id, transaction_id, plan_code, type, start_date, end_date) VALUES ($1, $2, $3, $4, $5, $6)`,
+                    [transaction.user_id, transaction.id, transaction.transaction_type, type, startDate, endDate]
                 );
             }
         }
@@ -203,7 +242,7 @@ const processFailedPayment = async (transactionId) => {
             return current;
         }
 
-        if (current.status === 'SUCCESS' && ['MEMBERSHIP_DAILY', 'MEMBERSHIP_MONTHLY'].includes(current.transaction_type)) {
+        if (current.status === 'SUCCESS' && isMembershipTransaction(current)) {
             await cancelMembershipByTransactionId(client, current.id);
         }
 
@@ -230,7 +269,7 @@ const processRefundedPayment = async (transactionId) => {
         if (current.status !== 'SUCCESS') return current;
         if (!current.settled_at) return current;
 
-        if (['MEMBERSHIP_DAILY', 'MEMBERSHIP_MONTHLY'].includes(current.transaction_type)) {
+        if (isMembershipTransaction(current)) {
             await cancelMembershipByTransactionId(client, current.id);
         }
 
@@ -248,6 +287,8 @@ const processRefundedPayment = async (transactionId) => {
 module.exports = { 
     getUserForTransaction, 
     getActiveOrderByUserId,
+    getPricingCatalogItem,
+    getPricingCatalogPrice,
     getLatestMembershipEndDate,
     createTransaction, 
     getPendingCashTransactions,
