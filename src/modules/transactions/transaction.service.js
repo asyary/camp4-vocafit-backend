@@ -3,14 +3,6 @@ const { snap } = require('../../config/midtrans');
 const repository = require('./transaction.repository');
 const crypto = require('crypto');
 
-const PRICING = {
-    MEMBERSHIP_DAILY: 15000,
-    PT_SESSION: 500000,      // 10 sessions
-    GROUP_FITNESS_5: 325000, // 10 sessions for 5
-    GROUP_FITNESS_4: 350000, // 10 sessions for 4
-    GROUP_FITNESS_3: 375000  // 10 sessions for 3
-};
-
 const MIDTRANS_SUCCESS_STATUSES = new Set(['capture', 'settlement']);
 const MIDTRANS_FAILURE_STATUSES = new Set(['deny', 'expire', 'cancel']);
 const MIDTRANS_REVERSAL_STATUSES = new Set(['refund', 'partial_refund', 'chargeback']);
@@ -28,12 +20,17 @@ const createPayment = async (userId, payload) => {
         throw err;
     }
 
-    // Calculate Base Price
-    let basePrice = 0;
-    if (payload.transactionType === 'MEMBERSHIP_MONTHLY') {
-        basePrice = parseFloat(user.monthly_price);
-    } else {
-        basePrice = PRICING[payload.transactionType];
+    const catalogItem = await repository.getPricingCatalogItem(payload.transactionType);
+    if (!catalogItem) {
+        throw new Error('Pricing option not found');
+    }
+
+    const basePrice = parseFloat(
+        await repository.getPricingCatalogPrice(payload.transactionType, user.membership_price_code || 'UMUM')
+    );
+
+    if (Number.isNaN(basePrice)) {
+        throw new Error('Pricing option is missing a price');
     }
 
     // Add Penalty Amount (if any)
@@ -68,7 +65,7 @@ const createPayment = async (userId, payload) => {
 				id: payload.transactionType,
 				price: grossAmount,
 				quantity: 1,
-				name: payload.transactionType.replace(/_/g, ' ')
+                name: catalogItem.name
 			}
 			],
 			customer_details: {
@@ -89,6 +86,7 @@ const createPayment = async (userId, payload) => {
         amount: grossAmount,
         paymentMethod: payload.paymentMethod,
         transactionType: payload.transactionType,
+        transactionFamily: catalogItem.family,
         orderId,
         expireAt,
         paymentUrl,

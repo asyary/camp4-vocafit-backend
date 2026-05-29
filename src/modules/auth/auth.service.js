@@ -14,6 +14,13 @@ const CHALLENGE_TYPES = {
 const TOKEN_TTL_MINUTES = 30;
 const OTP_RETRY_DELAYS_MS = [2 * 60 * 1000, 5 * 60 * 1000];
 
+const MEMBERSHIP_TIER_CODES = {
+    UMUM: 'UMUM',
+    PEGAWAI_KARYAWAN: 'PEGAWAI_KARYAWAN',
+    MAHASISWA_NON_VOKASI: 'MAHASISWA_NON_VOKASI',
+    MAHASISWA_VOKASI: 'MAHASISWA_VOKASI',
+};
+
 const hashValue = (value) => crypto.createHash('sha256').update(value).digest('hex');
 
 const generateVerificationToken = () => crypto.randomBytes(32).toString('hex');
@@ -26,32 +33,37 @@ const startOfDay = () => {
     return date;
 };
 
-const determinePricing = async (email) => {
-    let monthlyPrice = 300000; // Default Non-Unesa
+const determineMembershipTier = async (email) => {
+    const normalizedEmail = String(email || '').toLowerCase();
 
-    if (email.endsWith('unesa.ac.id')) {
-        try {
-			// Don't ask where I got this API endpoint from :D
-            const response = await fetch(`https://sso.unesa.ac.id/api/profil/email/${email}`);
-            const resData = await response.json();
-            
-            if (resData && resData.length > 0) {
-                const data = resData[0];
-                if (data.status === "Mahasiswa") {
-                    if (data.namaparentunit === "Fakultas Vokasi") {
-                        monthlyPrice = 100000;
-                    } else {
-                        monthlyPrice = 150000;
-                    }
-                } else if (data.status !== null) {
-                    monthlyPrice = 200000;
-                }
-            }
-        } catch (error) {
-            console.error('Failed to fetch Unesa API, falling back to default', error);
-        }
+    if (!normalizedEmail.endsWith('unesa.ac.id')) {
+        return MEMBERSHIP_TIER_CODES.UMUM;
     }
-    return monthlyPrice;
+
+    try {
+		// Don't ask where I got this API endpoint from :D
+        const response = await fetch(`https://sso.unesa.ac.id/api/profil/email/${email}`);
+        const resData = await response.json();
+
+        if (resData && resData.length > 0) {
+            const data = resData[0];
+            if (data.status === 'Mahasiswa') {
+                if (data.namaparentunit === 'Fakultas Vokasi') {
+                    return MEMBERSHIP_TIER_CODES.MAHASISWA_VOKASI;
+                }
+
+                return MEMBERSHIP_TIER_CODES.MAHASISWA_NON_VOKASI;
+            }
+
+            if (data.status !== 'Mahasiswa') {
+                return MEMBERSHIP_TIER_CODES.PEGAWAI_KARYAWAN;
+            }
+        }
+    } catch (error) {
+        console.error('Failed to fetch Unesa API, falling back to default', error);
+    }
+
+    return MEMBERSHIP_TIER_CODES.UMUM;
 };
 
 const register = async (data, fileBuffer) => {
@@ -71,7 +83,7 @@ const register = async (data, fileBuffer) => {
     // Upload image to Cloudinary
     const profileImageUrl = await uploadToCloudinary(fileBuffer, 'users');
 
-    const monthlyPrice = await determinePricing(data.email);
+    const membershipPriceCode = await determineMembershipTier(data.email);
     const passwordHash = await bcrypt.hash(data.password, 12);
     const verificationToken = generateVerificationToken();
     const tokenHash = hashValue(verificationToken);
@@ -82,13 +94,13 @@ const register = async (data, fileBuffer) => {
             ? await repository.updateUnverifiedUser({
                 ...data,
                 passwordHash,
-                monthlyPrice,
+                membershipPriceCode,
                 profileImageUrl
             }, client)
             : await repository.createUser({
                 ...data,
                 passwordHash,
-                monthlyPrice,
+                membershipPriceCode,
                 profileImageUrl
             }, client);
 
@@ -110,7 +122,15 @@ const register = async (data, fileBuffer) => {
 const login = async (data) => {
     const user = await repository.findByEmail(data.email);
     if (!user) throw new Error('Invalid credentials');
-    if (!user.is_verified) throw new Error('Please verify your email first');
+
+    if (!user.is_verified) {
+        const activeVerification = await repository.getActiveChallenge(data.email, CHALLENGE_TYPES.EMAIL_VERIFICATION);
+        if (activeVerification) {
+            throw new Error('Please verify your email first');
+        }
+
+        throw new Error('Verification link expired, please register again');
+    }
 
     const validPassword = await bcrypt.compare(data.password, user.password_hash);
     if (!validPassword) throw new Error('Invalid credentials');
@@ -118,7 +138,16 @@ const login = async (data) => {
     const accessToken = generateAccessToken(user.id, user.role);
     const refreshToken = generateRefreshToken(user.id);
 
-    return { accessToken, refreshToken, user: { id: user.id, role: user.role, name: user.full_name } };
+    return {
+        accessToken,
+        refreshToken,
+        user: {
+            id: user.id,
+            name: user.full_name,
+            role: user.role,
+            tier: user.tier,
+        },
+    };
 };
 
 const verifyUser = async (token) => {
