@@ -59,9 +59,17 @@ const getSchedulesByTrainer = async (trainerId) => {
 
 const getAllUsers = async (limit, offset) => {
     const { rows } = await db.query(
-        `SELECT id, email, full_name, profile_image_url, role, monthly_price, penalty_amount, created_at 
-         FROM users 
-         ORDER BY created_at DESC 
+        `SELECT u.id,
+                u.email,
+                u.full_name,
+                u.profile_image_url,
+                u.role,
+                t.name AS tier,
+                u.penalty_amount,
+                u.created_at
+         FROM users u
+         LEFT JOIN pricing_account_tiers t ON t.code = u.membership_price_code
+         ORDER BY u.created_at DESC 
          LIMIT $1 OFFSET $2`,
         [limit, offset]
     );
@@ -76,10 +84,16 @@ const countAllUsers = async () => {
 const updateUser = async (id, data) => {
     const { role, penaltyAmount } = data;
     const { rows } = await db.query(
-        `UPDATE users SET 
-            role = COALESCE($1, role), 
-            penalty_amount = COALESCE($2, penalty_amount) 
-         WHERE id = $3 RETURNING id, email, full_name, role, penalty_amount`,
+        `WITH updated AS (
+            UPDATE users SET 
+                role = COALESCE($1, role), 
+                penalty_amount = COALESCE($2, penalty_amount) 
+            WHERE id = $3
+            RETURNING id, email, full_name, role, penalty_amount, membership_price_code
+        )
+         SELECT updated.*, t.name AS tier
+         FROM updated
+         LEFT JOIN pricing_account_tiers t ON t.code = updated.membership_price_code`,
         [role, penaltyAmount, id]
     );
     return rows[0];
