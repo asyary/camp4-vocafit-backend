@@ -9,6 +9,7 @@ const { ZodError } = require('zod');
 
 const authRoutes = require('./modules/auth/auth.routes');
 const transactionRoutes = require('./modules/transactions/transaction.routes');
+const catalogRoutes = require('./modules/catalogs/catalog.routes');
 const visitRoutes = require('./modules/gym_visits/visit.routes');
 const newsRoutes = require('./modules/pengurus/news.routes');
 const trainerRoutes = require('./modules/pengurus/trainer.routes');
@@ -42,6 +43,7 @@ app.use(xss());
 // Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/transactions', transactionRoutes);
+app.use('/api/catalogs', catalogRoutes);
 app.use('/api/visits', visitRoutes);
 app.use('/api/news', newsRoutes);
 app.use('/api/trainers', trainerRoutes);
