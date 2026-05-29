@@ -3,24 +3,34 @@ const { snap } = require('../../config/midtrans');
 const repository = require('./transaction.repository');
 const crypto = require('crypto');
 
-const PRICING = {
-    MEMBERSHIP_DAILY: 15000,
-    PT_SESSION: 500000,      // 10 sessions
-    GROUP_FITNESS_5: 325000, // 10 sessions for 5
-    GROUP_FITNESS_4: 350000, // 10 sessions for 4
-    GROUP_FITNESS_3: 375000  // 10 sessions for 3
-};
+const MIDTRANS_SUCCESS_STATUSES = new Set(['capture', 'settlement']);
+const MIDTRANS_FAILURE_STATUSES = new Set(['deny', 'expire', 'cancel']);
+const MIDTRANS_REVERSAL_STATUSES = new Set(['refund', 'partial_refund', 'chargeback']);
 
 const createPayment = async (userId, payload) => {
     const user = await repository.getUserForTransaction(userId);
     if (!user) throw new Error('User not found');
 
-    // Calculate Base Price
-    let basePrice = 0;
-    if (payload.transactionType === 'MEMBERSHIP_MONTHLY') {
-        basePrice = parseFloat(user.monthly_price);
-    } else {
-        basePrice = PRICING[payload.transactionType];
+    const activeOrder = await repository.getActiveOrderByUserId(userId);
+    if (activeOrder) {
+        const err = new Error('You already have an active order');
+        err.status = 409;
+        err.data = { ...activeOrder };
+        delete err.data.snap_token;
+        throw err;
+    }
+
+    const catalogItem = await repository.getPricingCatalogItem(payload.transactionType);
+    if (!catalogItem) {
+        throw new Error('Pricing option not found');
+    }
+
+    const basePrice = parseFloat(
+        await repository.getPricingCatalogPrice(payload.transactionType, user.membership_price_code || 'UMUM')
+    );
+
+    if (Number.isNaN(basePrice)) {
+        throw new Error('Pricing option is missing a price');
     }
 
     // Add Penalty Amount (if any)
@@ -55,7 +65,7 @@ const createPayment = async (userId, payload) => {
 				id: payload.transactionType,
 				price: grossAmount,
 				quantity: 1,
-				name: payload.transactionType.replace(/_/g, ' ')
+                name: catalogItem.name
 			}
 			],
 			customer_details: {
@@ -76,10 +86,12 @@ const createPayment = async (userId, payload) => {
         amount: grossAmount,
         paymentMethod: payload.paymentMethod,
         transactionType: payload.transactionType,
+        transactionFamily: catalogItem.family,
         orderId,
         expireAt,
         paymentUrl,
-        snapToken
+        snapToken,
+        penaltyAmount
     });
 
 	delete transaction.snap_token;
@@ -92,8 +104,7 @@ const getCashPayments = async () => {
 };
 
 const confirmCashPayment = async (transactionId, status) => {
-    const { rows } = await db.query('SELECT * FROM transactions WHERE id = $1 AND payment_method = $2', [transactionId, 'CASH']);
-    const transaction = rows[0];
+    const transaction = await repository.getCashTransactionById(transactionId);
     
     if (!transaction) throw new Error('Transaction not found or not a cash payment');
     if (transaction.status !== 'PENDING') throw new Error('Transaction is already processed');
@@ -132,29 +143,77 @@ const handleMidtransWebhook = async (notificationPayload) => {
         throw new Error('Transaction not found in database.');
     }
 
-    // If already processed, ignore to prevent duplicate processing
-    if (transaction.status === 'SUCCESS' || transaction.status === 'FAILED') {
-        return { message: 'Transaction already processed' };
+    if (transaction.status === 'REFUNDED') {
+        return { message: 'Transaction already refunded' };
     }
 
-    // Evaluate Status
-    // Midtrans sends 'settlement' or 'capture' for successful payments
-    if (transaction_status === 'capture' || transaction_status === 'settlement') {
+    if (MIDTRANS_SUCCESS_STATUSES.has(transaction_status)) {
         if (fraud_status === 'challenge') {
             // Payment is flagged by Midtrans fraud detection, manual intervention needed
             return { message: 'Payment challenged by FDS' };
-        } else {
-            await repository.processSuccessfulPayment(transaction);
-            return { message: 'Payment processed successfully' };
         }
-    } else if (
-        transaction_status === 'cancel' || 
-        transaction_status === 'deny' || 
-        transaction_status === 'expire'
-    ) {
+
+        if (transaction.status === 'FAILED') {
+            return { message: 'Ignoring stale success webhook' };
+        }
+
+        if (transaction.status === 'REFUNDED') {
+            return { message: 'Transaction already refunded' };
+        }
+
+        // Apply business side-effects as soon as payment is captured/settled.
+        // 'capture' is considered successful by Midtrans, even if funds are not settled yet.
+        if (transaction.status !== 'SUCCESS') {
+            await repository.processSuccessfulPayment(transaction);
+        }
+
+        if (transaction_status === 'settlement' && !transaction.settled_at) {
+            await repository.updateTransactionSettledAt(transaction.id, new Date());
+            return { message: 'Payment settled successfully' };
+        }
+
+        if (transaction_status === 'capture') {
+            return { message: 'Payment captured successfully' };
+        }
+
+        return { message: 'Payment processed successfully' };
+    }
+
+    if (MIDTRANS_REVERSAL_STATUSES.has(transaction_status)) {
+        if (transaction.status === 'SUCCESS') {
+            await repository.processRefundedPayment(transaction.id);
+            return { message: 'Payment reversed/refunded successfully' };
+        }
+
+        if (transaction.status === 'REFUNDED') {
+            return { message: 'Transaction already refunded' };
+        }
+
+        return { message: 'Ignoring stale refund/cancel webhook' };
+    }
+
+    if (MIDTRANS_FAILURE_STATUSES.has(transaction_status)) {
+        if (transaction.status === 'FAILED') {
+            return { message: 'Transaction already failed' };
+        }
+
+        if (transaction.status === 'REFUNDED') {
+            return { message: 'Ignoring stale failure webhook' };
+        }
+
+        if (transaction.status === 'SUCCESS' && transaction.settled_at) {
+            return { message: 'Ignoring stale failure webhook' };
+        }
+
         await repository.processFailedPayment(transaction.id);
         return { message: 'Payment marked as failed/expired' };
-    } else if (transaction_status === 'pending') {
+    }
+
+    if (transaction_status === 'pending') {
+		if (transaction.status !== 'PENDING') {
+			return { message: 'Ignoring stale pending webhook' };
+		}
+
 		// payment_type is cstore for Indomaret/Alfamart
 		await repository.updateTransactionExpiry(transaction.id, new Date(Date.now() + 30 * 60 * 1000));
         return { message: 'Payment pending funds' };

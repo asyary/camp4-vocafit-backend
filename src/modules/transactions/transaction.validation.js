@@ -2,14 +2,7 @@ const { z } = require('zod');
 
 const createTransactionSchema = z.object({
     paymentMethod: z.enum(['QRIS', 'CASH']),
-    transactionType: z.enum([
-        'MEMBERSHIP_DAILY', 
-        'MEMBERSHIP_MONTHLY', 
-        'PT_SESSION', 
-        'GROUP_FITNESS_3', 
-        'GROUP_FITNESS_4', 
-        'GROUP_FITNESS_5'
-    ])
+    transactionType: z.string().trim().min(1).regex(/^[A-Z0-9_]+$/, 'Transaction type must use uppercase letters, numbers, and underscores only')
 });
 
 const confirmCashSchema = z.object({

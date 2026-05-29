@@ -1,26 +1,90 @@
 // Berhati-hatilah bekerja disini hai kawand
 const db = require('../../config/db');
+const { getCachedCatalogPrice } = require('../../utils/pricing-cache.util');
 
 const getUserForTransaction = async (userId) => {
     const { rows } = await db.query(
-        'SELECT id, email, full_name, monthly_price, penalty_amount FROM users WHERE id = $1',
+        'SELECT id, email, full_name, membership_price_code, penalty_amount FROM users WHERE id = $1',
         [userId]
     );
     return rows[0];
 };
 
-const createTransaction = async (data) => {
-    const { userId, amount, paymentMethod, transactionType, expireAt, orderId, paymentUrl, snapToken } = data;
-    
+const getPricingCatalogItem = async (catalogCode) => {
     const { rows } = await db.query(
-        `INSERT INTO transactions 
-        (user_id, amount, payment_method, transaction_type, midtrans_order_id, expire_at, payment_url, snap_token) 
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8) 
-        RETURNING *`,
-        [userId, amount, paymentMethod, transactionType, orderId, expireAt, paymentUrl, snapToken]
+        `SELECT code, family, name, group_size, session_count, duration_days
+         FROM pricing_catalog
+         WHERE code = $1
+           AND is_active = TRUE`,
+        [catalogCode]
+    );
+
+    return rows[0];
+};
+
+const getPricingCatalogPrice = async (catalogCode, tierCode) => {
+    return await getCachedCatalogPrice({
+        catalogCode,
+        tierCode,
+        fetchPrice: async () => {
+            const { rows } = await db.query(
+                `SELECT p.price
+                 FROM pricing_catalog_prices p
+                 JOIN pricing_catalog c ON c.code = p.catalog_code
+                 WHERE p.catalog_code = $1
+                   AND p.account_tier_code = $2
+                   AND c.is_active = TRUE
+                 LIMIT 1`,
+                [catalogCode, tierCode]
+            );
+
+            return rows[0]?.price ?? null;
+        }
+    });
+};
+
+const getActiveOrderByUserId = async (userId) => {
+    const { rows } = await db.query(
+        `SELECT *
+         FROM transactions
+         WHERE user_id = $1
+           AND status = 'PENDING'
+           AND (expire_at IS NULL OR expire_at > NOW())
+         ORDER BY created_at DESC
+         LIMIT 1`,
+        [userId]
     );
     return rows[0];
 };
+
+const getLatestMembershipEndDate = async (userId) => {
+    const { rows } = await db.query(
+        `SELECT MAX(end_date) AS latest_end_date
+         FROM memberships
+         WHERE user_id = $1
+           AND canceled_at IS NULL`,
+        [userId]
+    );
+    return rows[0]?.latest_end_date || null;
+};
+
+const createTransaction = async (data) => {
+    const { userId, amount, paymentMethod, transactionType, transactionFamily, expireAt, orderId, paymentUrl, snapToken, penaltyAmount } = data;
+    
+    const { rows } = await db.query(
+        `INSERT INTO transactions 
+        (user_id, amount, payment_method, transaction_family, transaction_type, order_id, expire_at, payment_url, snap_token, penalty_amount) 
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) 
+        RETURNING *`,
+        [userId, amount, paymentMethod, transactionFamily, transactionType, orderId, expireAt, paymentUrl, snapToken, penaltyAmount || 0]
+    );
+    return rows[0];
+};
+
+const isMembershipTransaction = (transaction) => (
+    transaction?.transaction_family === 'MEMBERSHIP' ||
+    String(transaction?.transaction_type || '').startsWith('MEMBERSHIP_')
+);
 
 const getPendingCashTransactions = async () => {
     // Only fetch cash transactions that haven't expired yet
@@ -52,66 +116,188 @@ const updateTransactionExpiry = async (transactionId, expireAt) => {
 	return rows[0];
 };
 
+const updateTransactionSettledAt = async (transactionId, settledAt) => {
+    const { rows } = await db.query(
+        'UPDATE transactions SET settled_at = $1 WHERE id = $2 RETURNING *',
+        [settledAt, transactionId]
+    );
+    return rows[0];
+};
+
+const cancelMembershipByTransactionId = async (client, transactionId) => {
+    const { rows } = await client.query(
+        'UPDATE memberships SET canceled_at = COALESCE(canceled_at, NOW()) WHERE transaction_id = $1 RETURNING *',
+        [transactionId]
+    );
+    return rows[0];
+};
+
+const restorePenaltyAmount = async (client, transaction) => {
+    const penaltyAmount = parseFloat(transaction.penalty_amount) || 0;
+
+    if (!penaltyAmount) return null;
+
+    const { rows } = await client.query(
+        'UPDATE users SET penalty_amount = COALESCE(penalty_amount, 0) + $1 WHERE id = $2 RETURNING *',
+        [penaltyAmount, transaction.user_id]
+    );
+
+    return rows[0];
+};
+
 const getTransactionByOrderId = async (orderId) => {
     const { rows } = await db.query(
-        'SELECT * FROM transactions WHERE midtrans_order_id = $1',
+        'SELECT * FROM transactions WHERE order_id = $1',
         [orderId]
     );
     return rows[0];
 };
 
+const getCashTransactionById = async (transactionId) => {
+    const { rows } = await db.query(
+        `SELECT *
+         FROM transactions
+         WHERE id = $1
+           AND payment_method = 'CASH'`,
+        [transactionId]
+    );
+    return rows[0];
+};
+
+const lockTransactionForUpdate = async (client, transactionId) => {
+    const { rows } = await client.query(
+        'SELECT * FROM transactions WHERE id = $1 FOR UPDATE',
+        [transactionId]
+    );
+
+    return rows[0];
+};
+
 const processSuccessfulPayment = async (transaction) => {
-    // Sequentially exec queries with BEGIN/COMMIT for atomic transactions
-    
-    // 1. Update Transaction Status
-    await db.query(
-        'UPDATE transactions SET status = $1 WHERE id = $2',
-        ['SUCCESS', transaction.id]
-    );
+    // Make processing atomic and idempotent using a DB transaction
+    return await db.withTransaction(async (client) => {
+        const current = await lockTransactionForUpdate(client, transaction.id);
+        if (!current) throw new Error('Transaction not found');
 
-    // 2. Reset User's Penalty Amount (since it was paid in this transaction)
-    await db.query(
-        'UPDATE users SET penalty_amount = 0 WHERE id = $1',
-        [transaction.user_id]
-    );
+        // If already settled or refunded, do not re-apply the success side effects.
+        if (current.status === 'SUCCESS' || current.status === 'REFUNDED') return current;
 
-    // 3. Grant Membership if applicable
-    if (['MEMBERSHIP_DAILY', 'MEMBERSHIP_MONTHLY'].includes(transaction.transaction_type)) {
-        const startDate = new Date();
-        const endDate = new Date();
+        // 1. Update Transaction Status
+        await client.query('UPDATE transactions SET status = $1 WHERE id = $2', ['SUCCESS', transaction.id]);
 
-        if (transaction.transaction_type === 'MEMBERSHIP_DAILY') {
-            // Expires at 23:59:59 today
-            endDate.setHours(23, 59, 59, 999);
-        } else if (transaction.transaction_type === 'MEMBERSHIP_MONTHLY') {
-            // Expires in 30 days
-            endDate.setDate(endDate.getDate() + 30);
+        // 2. Reset User's Penalty Amount (since it was paid in this transaction)
+        await client.query('UPDATE users SET penalty_amount = 0 WHERE id = $1', [transaction.user_id]);
+
+        // 3. Grant Membership if applicable (avoid duplicate membership insert)
+        if (isMembershipTransaction(transaction)) {
+            const { rows: latestRows } = await client.query(
+                `SELECT MAX(end_date) AS latest_end_date FROM memberships WHERE user_id = $1`,
+                [transaction.user_id]
+            );
+            const latestMembershipEndDate = latestRows[0]?.latest_end_date || null;
+            const now = new Date();
+            const startDate = latestMembershipEndDate && new Date(latestMembershipEndDate) > now
+                ? new Date(latestMembershipEndDate)
+                : now;
+            const endDate = new Date(startDate.getTime());
+
+            if (transaction.transaction_type === 'MEMBERSHIP_DAILY') {
+                endDate.setHours(23, 59, 59, 999);
+            } else if (transaction.transaction_type === 'MEMBERSHIP_MONTHLY') {
+                endDate.setDate(endDate.getDate() + 30);
+            }
+
+            const type = transaction.transaction_type.split('_')[1].toLowerCase();
+
+            const { rowCount: exists } = await client.query(
+                `SELECT 1 FROM memberships WHERE user_id = $1 AND plan_code = $2 AND start_date = $3 AND end_date = $4 LIMIT 1`,
+                [transaction.user_id, transaction.transaction_type, startDate, endDate]
+            );
+
+            if (!exists) {
+                await client.query(
+                    `INSERT INTO memberships (user_id, transaction_id, plan_code, type, start_date, end_date) VALUES ($1, $2, $3, $4, $5, $6)`,
+                    [transaction.user_id, transaction.id, transaction.transaction_type, type, startDate, endDate]
+                );
+            }
         }
 
-        await db.query(
-            `INSERT INTO memberships (user_id, type, start_date, end_date) 
-             VALUES ($1, $2, $3, $4)`,
-            [transaction.user_id, transaction.transaction_type.split('_')[1].toLowerCase(), startDate, endDate]
-        );
-    }
-    
-    // Might QoL update: PT_SESSION and GROUP_FITNESS can insert into a `user_packages` table
+        return { ...current, status: 'SUCCESS' };
+    });
 };
 
 const processFailedPayment = async (transactionId) => {
-    await db.query(
-        'UPDATE transactions SET status = $1 WHERE id = $2',
-        ['FAILED', transactionId]
-    );
+    return await db.withTransaction(async (client) => {
+        const current = await lockTransactionForUpdate(client, transactionId);
+        if (!current) throw new Error('Transaction not found');
+
+        // If already failed, return
+        if (current.status === 'FAILED') return current;
+
+        // If already refunded, do not overwrite
+        if (current.status === 'REFUNDED') return current;
+
+        // If success but already settled, do not revert into FAILED
+        if (current.status === 'SUCCESS' && current.settled_at) {
+            return current;
+        }
+
+        if (current.status === 'SUCCESS' && isMembershipTransaction(current)) {
+            await cancelMembershipByTransactionId(client, current.id);
+        }
+
+        if (current.status === 'SUCCESS') {
+            await restorePenaltyAmount(client, current);
+        }
+
+        const { rows } = await client.query(
+            'UPDATE transactions SET status = $1 WHERE id = $2 RETURNING *',
+            ['FAILED', transactionId]
+        );
+
+        return rows[0];
+    });
+};
+
+const processRefundedPayment = async (transactionId) => {
+    return await db.withTransaction(async (client) => {
+        const current = await lockTransactionForUpdate(client, transactionId);
+        if (!current) throw new Error('Transaction not found');
+
+        // Refunds only make sense after a successful and settled payment.
+        if (current.status === 'REFUNDED') return current;
+        if (current.status !== 'SUCCESS') return current;
+        if (!current.settled_at) return current;
+
+        if (isMembershipTransaction(current)) {
+            await cancelMembershipByTransactionId(client, current.id);
+        }
+
+        await restorePenaltyAmount(client, current);
+
+        const { rows } = await client.query(
+            'UPDATE transactions SET status = $1 WHERE id = $2 RETURNING *',
+            ['REFUNDED', transactionId]
+        );
+
+        return rows[0];
+    });
 };
 
 module.exports = { 
     getUserForTransaction, 
+    getActiveOrderByUserId,
+    getPricingCatalogItem,
+    getPricingCatalogPrice,
+    getLatestMembershipEndDate,
     createTransaction, 
     getPendingCashTransactions,
     updateTransactionStatus,
     updateTransactionExpiry,
+	getCashTransactionById,
 	getTransactionByOrderId,
+    processRefundedPayment,
     processSuccessfulPayment,
-    processFailedPayment
+    processFailedPayment,
+    updateTransactionSettledAt
 };

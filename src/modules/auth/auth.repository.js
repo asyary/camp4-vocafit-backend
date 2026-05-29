@@ -1,36 +1,77 @@
 const db = require('../../config/db');
+const { getCachedCatalogPrice } = require('../../utils/pricing-cache.util');
 
 const queryWith = (executor, text, params) => executor.query(text, params);
 
 const findByEmail = async (email) => {
-    const { rows } = await db.query('SELECT * FROM users WHERE email = $1', [email]);
+    const { rows } = await db.query(
+        `SELECT u.*,
+                t.name AS tier
+         FROM users u
+         LEFT JOIN pricing_account_tiers t ON t.code = u.membership_price_code
+         WHERE u.email = $1`,
+        [email]
+    );
     return rows[0];
 };
 
+const getCatalogPrice = async (catalogCode, tierCode, executor = db) => {
+    return await getCachedCatalogPrice({
+        catalogCode,
+        tierCode,
+        fetchPrice: async () => {
+            const { rows } = await queryWith(
+                executor,
+                `SELECT p.price
+                 FROM pricing_catalog_prices p
+                 JOIN pricing_catalog c ON c.code = p.catalog_code
+                 WHERE c.code = $1
+                   AND p.account_tier_code = $2
+                   AND c.is_active = TRUE
+                 LIMIT 1`,
+                [catalogCode, tierCode]
+            );
+
+            return rows[0]?.price ?? null;
+        }
+    });
+};
+
 const createUser = async (userData, executor = db) => {
-    const { email, passwordHash, fullName, monthlyPrice, profileImageUrl } = userData;
+    const { email, passwordHash, fullName, membershipPriceCode, profileImageUrl } = userData;
     const { rows } = await queryWith(
         executor,
-        `INSERT INTO users (email, password_hash, full_name, monthly_price, profile_image_url) 
-         VALUES ($1, $2, $3, $4, $5) RETURNING id, email, full_name, role, is_verified, verified_at`,
-        [email, passwordHash, fullName, monthlyPrice, profileImageUrl]
+        `WITH inserted AS (
+            INSERT INTO users (email, password_hash, full_name, membership_price_code, profile_image_url) 
+            VALUES ($1, $2, $3, $4, $5)
+            RETURNING id, email, full_name, role, is_verified, verified_at, membership_price_code
+        )
+         SELECT inserted.*, t.name AS tier
+         FROM inserted
+         LEFT JOIN pricing_account_tiers t ON t.code = inserted.membership_price_code`,
+        [email, passwordHash, fullName, membershipPriceCode, profileImageUrl]
     );
     return rows[0];
 };
 
 const updateUnverifiedUser = async (userData, executor = db) => {
-    const { email, passwordHash, fullName, monthlyPrice, profileImageUrl } = userData;
+    const { email, passwordHash, fullName, membershipPriceCode, profileImageUrl } = userData;
     const { rows } = await queryWith(
         executor,
-        `UPDATE users 
-         SET password_hash = $2,
-             full_name = $3,
-             monthly_price = $4,
-             profile_image_url = $5,
-             updated_at = NOW()
-         WHERE email = $1 AND is_verified = FALSE
-         RETURNING id, email, full_name, role, is_verified, verified_at`,
-        [email, passwordHash, fullName, monthlyPrice, profileImageUrl]
+        `WITH updated AS (
+            UPDATE users 
+            SET password_hash = $2,
+                full_name = $3,
+                membership_price_code = $4,
+                profile_image_url = $5,
+                updated_at = NOW()
+            WHERE email = $1 AND is_verified = FALSE
+            RETURNING id, email, full_name, role, is_verified, verified_at, membership_price_code
+        )
+         SELECT updated.*, t.name AS tier
+         FROM updated
+         LEFT JOIN pricing_account_tiers t ON t.code = updated.membership_price_code`,
+        [email, passwordHash, fullName, membershipPriceCode, profileImageUrl]
     );
     return rows[0];
 };
@@ -38,10 +79,15 @@ const updateUnverifiedUser = async (userData, executor = db) => {
 const markUserVerified = async (email, executor = db) => {
     const { rows } = await queryWith(
         executor,
-        `UPDATE users 
-         SET is_verified = TRUE, verified_at = NOW(), updated_at = NOW()
-         WHERE email = $1 AND is_verified = FALSE
-         RETURNING id, email, full_name, role, is_verified, verified_at`,
+        `WITH updated AS (
+            UPDATE users 
+            SET is_verified = TRUE, verified_at = NOW(), updated_at = NOW()
+            WHERE email = $1 AND is_verified = FALSE
+            RETURNING id, email, full_name, role, is_verified, verified_at, membership_price_code
+        )
+         SELECT updated.*, t.name AS tier
+         FROM updated
+         LEFT JOIN pricing_account_tiers t ON t.code = updated.membership_price_code`,
         [email]
     );
     return rows[0];
@@ -220,4 +266,5 @@ module.exports = {
     incrementChallengeAttempt,
     updatePasswordResetOtp,
     updatePasswordHashByEmail,
+    getCatalogPrice,
 };
