@@ -190,7 +190,18 @@ const processSuccessfulPayment = async (transaction) => {
             const durationDays = catalogRows[0] ? parseInt(catalogRows[0].duration_days, 10) : null;
 
             if (durationDays === 1) {
-                // Single-day membership: end at end of day
+                // Single-day membership: end at end of day, or tomorrow if after 9 PM
+                const isSameDate = (left, right) => (
+                    left.getFullYear() === right.getFullYear() &&
+                    left.getMonth() === right.getMonth() &&
+                    left.getDate() === right.getDate()
+                );
+                const afterNinePm = now.getHours() >= 21;
+
+                if (afterNinePm && isSameDate(startDate, now)) {
+                    endDate.setDate(endDate.getDate() + 1);
+                }
+
                 endDate.setHours(23, 59, 59, 999);
             } else if (Number.isInteger(durationDays) && durationDays > 0) {
                 // Multi-day membership: add specified duration
