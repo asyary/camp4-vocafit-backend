@@ -36,16 +36,21 @@ CREATE TABLE pricing_catalog_prices (
 CREATE TABLE users (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     email VARCHAR(255) UNIQUE NOT NULL,
-    password_hash VARCHAR(255) NOT NULL,
+    password VARCHAR(255) NOT NULL,
     full_name VARCHAR(255) NOT NULL,
     role VARCHAR(50) DEFAULT 'member' CHECK (role IN ('member', 'pengurus')),
     is_verified BOOLEAN DEFAULT FALSE,
-    membership_price_code VARCHAR(50) REFERENCES pricing_account_tiers(code),
     penalty_amount NUMERIC(10, 2) DEFAULT 0, -- Stacks 5k for missed tap-outs
 	profile_image_url VARCHAR(255) NOT NULL,
     verified_at TIMESTAMP WITH TIME ZONE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE user_account_tiers (
+    user_id UUID PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+    account_tier_code VARCHAR(50) NOT NULL REFERENCES pricing_account_tiers(code),
+    assigned_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
 -- Auth Challenges (Email verification & password reset OTP)
@@ -91,8 +96,8 @@ CREATE TABLE transactions (
     payment_method VARCHAR(50) CHECK (payment_method IN ('QRIS', 'CASH')),
     status VARCHAR(50) DEFAULT 'PENDING' CHECK (status IN ('PENDING', 'SUCCESS', 'FAILED', 'REFUNDED')),
     penalty_amount NUMERIC(10, 2) DEFAULT 0,
-	transaction_family VARCHAR(30) NOT NULL CHECK (transaction_family IN ('MEMBERSHIP', 'PERSONAL_TRAINER')),
-	transaction_type VARCHAR(100) NOT NULL REFERENCES pricing_catalog(code),
+	catalog_code VARCHAR(100) NOT NULL REFERENCES pricing_catalog(code),
+    account_tier_code VARCHAR(50) REFERENCES pricing_account_tiers(code),
 	order_id VARCHAR(255),
 	payment_url VARCHAR(255),
 	snap_token VARCHAR(255),
