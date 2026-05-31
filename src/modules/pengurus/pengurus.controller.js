@@ -1,8 +1,6 @@
 const service = require('./pengurus.service');
 const { createUserSchema, updateUserSchema, imageSchema } = require('./pengurus.validation');
 const { paginationSchema } = require('../../utils/validation.util');
-const { uploadToCloudinary } = require('../../utils/cloudinary.util');
-const db = require('../../config/db');
 
 const getUsers = async (req, res, next) => {
     try {
@@ -40,29 +38,10 @@ const createUser = async (req, res, next) => {
 const updateUser = async (req, res, next) => {
     try {
         const parsedBody = updateUserSchema.parse(req.body);
-        const updatedUser = await service.editUser(req.params.id, parsedBody);
+        if (req.file) imageSchema.parse({ image: req.file });
+
+        const updatedUser = await service.editUser(req.params.id, parsedBody, req.file ? req.file.buffer : null);
         res.success(updatedUser, 'User updated successfully');
-    } catch (err) {
-        next(err);
-    }
-};
-
-const updateUserImage = async (req, res, next) => {
-    try {
-        if (!req.file) throw new Error('New image file is required');
-
-		const parsedFile = imageSchema.parse(req.file);
-        
-        const imageUrl = await uploadToCloudinary(parsedFile.buffer, 'users');
-        
-        const { rows } = await db.query(
-            'UPDATE users SET profile_image_url = $1 WHERE id = $2 AND is_verified = TRUE RETURNING id, full_name, profile_image_url',
-            [imageUrl, req.params.id]
-        );
-        
-        if (rows.length === 0) throw new Error('User not found');
-        
-        res.success(rows[0], 'User image updated successfully');
     } catch (err) {
         next(err);
     }
@@ -78,5 +57,5 @@ const deleteUser = async (req, res, next) => {
 };
 
 module.exports = {
-    getUsers, getUser, createUser, updateUser, deleteUser, updateUserImage
+    getUsers, getUser, createUser, updateUser, deleteUser
 };

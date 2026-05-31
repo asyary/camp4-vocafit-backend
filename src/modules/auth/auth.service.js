@@ -127,7 +127,7 @@ const login = async (data) => {
         throw new Error('Account is inactive');
     }
 
-    const validPassword = await bcrypt.compare(data.password, user.password_hash);
+    const validPassword = await bcrypt.compare(data.password, user.password);
     if (!validPassword) throw new Error('Invalid credentials');
 
     const accessToken = generateAccessToken(user.id, user.role);

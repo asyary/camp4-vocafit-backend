@@ -54,8 +54,22 @@ const addUser = async (data, fileBuffer) => {
     });
 };
 
-const editUser = async (id, data) => {
-    const updatedUser = await repository.updateUser(id, data);
+const editUser = async (id, data, fileBuffer) => {
+    let passwordHash;
+    if (data.password) {
+        passwordHash = await bcrypt.hash(data.password, 12);
+    }
+
+    let profileImageUrl;
+    if (fileBuffer) {
+        profileImageUrl = await uploadToCloudinary(fileBuffer, 'users');
+    }
+
+    const updatedUser = await repository.updateUser(id, {
+        ...data,
+        passwordHash,
+        profileImageUrl
+    });
     if (!updatedUser) throw new Error('User not found');
     return updatedUser;
 };

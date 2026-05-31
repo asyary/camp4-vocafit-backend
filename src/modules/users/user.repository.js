@@ -7,11 +7,13 @@ const getUserProfile = async (id) => {
                 u.full_name,
                 u.profile_image_url,
                 u.role,
+                uat.account_tier_code AS membership_price_code,
                 t.name AS tier,
                 u.penalty_amount,
                 u.created_at
          FROM users u
-         LEFT JOIN pricing_account_tiers t ON t.code = u.membership_price_code
+         LEFT JOIN user_account_tiers uat ON uat.user_id = u.id
+         LEFT JOIN pricing_account_tiers t ON t.code = uat.account_tier_code
                  WHERE u.id = $1
                      AND u.is_verified = TRUE`,
         [id]
@@ -25,14 +27,17 @@ const updateProfile = async (id, data) => {
         `WITH updated AS (
             UPDATE users 
             SET full_name = COALESCE($1, full_name), 
-                password_hash = COALESCE($2, password_hash)
+                password = COALESCE($2, password)
             WHERE id = $3
               AND is_verified = TRUE
-            RETURNING id, email, full_name, profile_image_url, membership_price_code
+            RETURNING id, email, full_name, profile_image_url
         )
-         SELECT updated.*, t.name AS tier
+         SELECT updated.*,
+                uat.account_tier_code AS membership_price_code,
+                t.name AS tier
          FROM updated
-         LEFT JOIN pricing_account_tiers t ON t.code = updated.membership_price_code`,
+         LEFT JOIN user_account_tiers uat ON uat.user_id = updated.id
+         LEFT JOIN pricing_account_tiers t ON t.code = uat.account_tier_code`,
         [fullName, passwordHash, id]
     );
     return rows[0];

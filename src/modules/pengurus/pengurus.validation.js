@@ -26,6 +26,7 @@ const imageSchema = z.object({
 const updateUserSchema = z.object({
 	email: z.string().email('Invalid email format').optional(),
 	fullName: z.string().min(2, 'Full name must be at least 2 characters long').optional(),
+	password: z.string().min(8, 'Password must be at least 8 characters long').optional(),
     role: z.enum(['member', 'pengurus']).optional(),
 	membershipPriceCode: z.string().nullable().optional(),
 	penaltyAmount: z.coerce.number().min(0, 'Penalty amount must be a positive number').optional()

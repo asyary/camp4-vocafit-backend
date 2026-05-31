@@ -5,9 +5,11 @@ const queryWith = (executor, text, params) => executor.query(text, params);
 const findByEmail = async (email) => {
     const { rows } = await db.query(
         `SELECT u.*,
+                uat.account_tier_code AS membership_price_code,
                 t.name AS tier
          FROM users u
-         LEFT JOIN pricing_account_tiers t ON t.code = u.membership_price_code
+         LEFT JOIN user_account_tiers uat ON uat.user_id = u.id
+         LEFT JOIN pricing_account_tiers t ON t.code = uat.account_tier_code
          WHERE u.email = $1`,
         [email]
     );
@@ -19,13 +21,20 @@ const createUser = async (userData, executor = db) => {
     const { rows } = await queryWith(
         executor,
         `WITH inserted AS (
-            INSERT INTO users (email, password_hash, full_name, membership_price_code, profile_image_url) 
-            VALUES ($1, $2, $3, $4, $5)
-            RETURNING id, email, full_name, role, is_verified, verified_at, membership_price_code
+            INSERT INTO users (email, password, full_name, profile_image_url) 
+            VALUES ($1, $2, $3, $5)
+            RETURNING id, email, full_name, role, is_verified, verified_at
+        ), tier_insert AS (
+            INSERT INTO user_account_tiers (user_id, account_tier_code)
+            SELECT id, $4 FROM inserted
+            RETURNING user_id, account_tier_code
         )
-         SELECT inserted.*, t.name AS tier
+         SELECT inserted.*,
+                tier_insert.account_tier_code AS membership_price_code,
+                t.name AS tier
          FROM inserted
-         LEFT JOIN pricing_account_tiers t ON t.code = inserted.membership_price_code`,
+         LEFT JOIN tier_insert ON tier_insert.user_id = inserted.id
+         LEFT JOIN pricing_account_tiers t ON t.code = tier_insert.account_tier_code`,
         [email, passwordHash, fullName, membershipPriceCode, profileImageUrl]
     );
     return rows[0];
@@ -37,17 +46,26 @@ const updateUnverifiedUser = async (userData, executor = db) => {
         executor,
         `WITH updated AS (
             UPDATE users 
-            SET password_hash = $2,
+            SET password = $2,
                 full_name = $3,
-                membership_price_code = $4,
                 profile_image_url = $5,
                 updated_at = NOW()
             WHERE email = $1 AND is_verified = FALSE
-            RETURNING id, email, full_name, role, is_verified, verified_at, membership_price_code
+            RETURNING id, email, full_name, role, is_verified, verified_at
+        ), tier_upsert AS (
+            INSERT INTO user_account_tiers (user_id, account_tier_code)
+            SELECT id, $4 FROM updated
+            ON CONFLICT (user_id) DO UPDATE
+            SET account_tier_code = EXCLUDED.account_tier_code,
+                assigned_at = NOW()
+            RETURNING user_id, account_tier_code
         )
-         SELECT updated.*, t.name AS tier
+         SELECT updated.*,
+                tier_upsert.account_tier_code AS membership_price_code,
+                t.name AS tier
          FROM updated
-         LEFT JOIN pricing_account_tiers t ON t.code = updated.membership_price_code`,
+         LEFT JOIN tier_upsert ON tier_upsert.user_id = updated.id
+         LEFT JOIN pricing_account_tiers t ON t.code = tier_upsert.account_tier_code`,
         [email, passwordHash, fullName, membershipPriceCode, profileImageUrl]
     );
     return rows[0];
@@ -60,11 +78,14 @@ const markUserVerified = async (email, executor = db) => {
             UPDATE users 
             SET is_verified = TRUE, verified_at = NOW(), updated_at = NOW()
             WHERE email = $1 AND is_verified = FALSE
-            RETURNING id, email, full_name, role, is_verified, verified_at, membership_price_code
+            RETURNING id, email, full_name, role, is_verified, verified_at
         )
-         SELECT updated.*, t.name AS tier
+         SELECT updated.*,
+                uat.account_tier_code AS membership_price_code,
+                t.name AS tier
          FROM updated
-         LEFT JOIN pricing_account_tiers t ON t.code = updated.membership_price_code`,
+         LEFT JOIN user_account_tiers uat ON uat.user_id = updated.id
+         LEFT JOIN pricing_account_tiers t ON t.code = uat.account_tier_code`,
         [email]
     );
     return rows[0];
@@ -206,7 +227,7 @@ const updatePasswordHashByEmail = async (email, passwordHash, executor = db) => 
     const { rows } = await queryWith(
         executor,
         `UPDATE users
-         SET password_hash = $2,
+         SET password = $2,
              updated_at = NOW()
          WHERE email = $1
          RETURNING id, email, full_name, role`,
