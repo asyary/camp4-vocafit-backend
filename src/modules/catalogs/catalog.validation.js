@@ -14,7 +14,6 @@ const baseCatalogSchema = {
     groupSize: z.coerce.number().int().positive().nullable().optional(),
     sessionCount: z.coerce.number().int().positive().nullable().optional(),
     durationDays: z.coerce.number().int().positive().nullable().optional(),
-    sortOrder: z.coerce.number().int().min(0).default(0),
     isActive: z.preprocess(toBoolean, z.boolean().default(true))
 };
 
@@ -27,8 +26,13 @@ const updateCatalogSchema = z.object({
     groupSize: baseCatalogSchema.groupSize,
     sessionCount: baseCatalogSchema.sessionCount,
     durationDays: baseCatalogSchema.durationDays,
-    sortOrder: z.coerce.number().int().min(0).optional(),
     isActive: z.preprocess(toBoolean, z.boolean().optional())
 });
 
-module.exports = { createCatalogSchema, updateCatalogSchema };
+const reorderCatalogSchema = z.object({
+    family: baseCatalogSchema.family,
+    orderedCodes: z.array(z.string().min(2, 'Code must be at least 2 characters long')).min(1, 'At least one catalog code is required')
+        .refine((codes) => new Set(codes).size === codes.length, 'Catalog codes must be unique')
+});
+
+module.exports = { createCatalogSchema, updateCatalogSchema, reorderCatalogSchema };

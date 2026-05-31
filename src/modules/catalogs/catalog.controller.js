@@ -1,19 +1,10 @@
 const service = require('./catalog.service');
-const { createCatalogSchema, updateCatalogSchema } = require('./catalog.validation');
+const { createCatalogSchema, updateCatalogSchema, reorderCatalogSchema } = require('./catalog.validation');
 
 const getCatalogItems = async (req, res, next) => {
     try {
         const catalogs = await service.getCatalogItems();
         res.success(catalogs, 'Catalog items retrieved successfully');
-    } catch (err) {
-        next(err);
-    }
-};
-
-const getCatalogItem = async (req, res, next) => {
-    try {
-        const catalog = await service.getCatalogItem(req.params.code);
-        res.success(catalog, 'Catalog item retrieved successfully');
     } catch (err) {
         next(err);
     }
@@ -39,6 +30,16 @@ const updateCatalogItem = async (req, res, next) => {
     }
 };
 
+const reorderCatalogItems = async (req, res, next) => {
+    try {
+        const parsedBody = reorderCatalogSchema.parse(req.body);
+        const catalogs = await service.reorderCatalogItems(parsedBody.family, parsedBody.orderedCodes);
+        res.success(catalogs, 'Catalog items reordered successfully');
+    } catch (err) {
+        next(err);
+    }
+};
+
 const deleteCatalogItem = async (req, res, next) => {
     try {
         const catalog = await service.deleteCatalogItem(req.params.code);
@@ -48,4 +49,4 @@ const deleteCatalogItem = async (req, res, next) => {
     }
 };
 
-module.exports = { getCatalogItems, getCatalogItem, createCatalogItem, updateCatalogItem, deleteCatalogItem };
+module.exports = { getCatalogItems, createCatalogItem, updateCatalogItem, deleteCatalogItem, reorderCatalogItems };
