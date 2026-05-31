@@ -1,5 +1,6 @@
 const service = require('./transaction.service');
-const { createTransactionSchema, confirmCashSchema } = require('./transaction.validation');
+const { paginationSchema } = require('../../utils/validation.util');
+const { createTransactionSchema, confirmCashSchema, cancelTransactionSchema, transactionIdParamSchema } = require('./transaction.validation');
 
 const createTransaction = async (req, res, next) => {
     try {
@@ -15,6 +16,36 @@ const getPendingCash = async (req, res, next) => {
     try {
         const transactions = await service.getCashPayments();
         res.success(transactions, 'Pending cash transactions retrieved successfully');
+    } catch (err) {
+        next(err);
+    }
+};
+
+const getTransactionHistory = async (req, res, next) => {
+    try {
+        const { page, limit } = paginationSchema.parse(req.query);
+        const result = await service.getTransactionHistory(req.user.id, req.user.role, page, limit);
+        res.success(result.data, 'Transaction history retrieved successfully', 200, { page, limit, total: result.total_pages });
+    } catch (err) {
+        next(err);
+    }
+};
+
+const getTransactionDetails = async (req, res, next) => {
+    try {
+        const { transactionId } = transactionIdParamSchema.parse(req.params);
+        const transaction = await service.getTransactionDetails(req.user.id, req.user.role, transactionId);
+        res.success(transaction, 'Transaction retrieved successfully');
+    } catch (err) {
+        next(err);
+    }
+};
+
+const cancelTransaction = async (req, res, next) => {
+    try {
+        const { transactionId } = cancelTransactionSchema.parse(req.params);
+        const transaction = await service.cancelTransaction(req.user.id, req.user.role, transactionId);
+        res.success(transaction, 'Transaction cancelled successfully');
     } catch (err) {
         next(err);
     }
@@ -43,4 +74,4 @@ const midtransWebhook = async (req, res, next) => {
     }
 };
 
-module.exports = { createTransaction, getPendingCash, confirmCash, midtransWebhook };
+module.exports = { createTransaction, getPendingCash, getTransactionHistory, getTransactionDetails, cancelTransaction, confirmCash, midtransWebhook };

@@ -10,4 +10,12 @@ const confirmCashSchema = z.object({
     status: z.enum(['SUCCESS', 'FAILED'])
 });
 
-module.exports = { createTransactionSchema, confirmCashSchema };
+const cancelTransactionSchema = z.object({
+    transactionId: z.uuid()
+});
+
+const transactionIdParamSchema = z.object({
+    transactionId: z.uuid()
+});
+
+module.exports = { createTransactionSchema, confirmCashSchema, cancelTransactionSchema, transactionIdParamSchema };

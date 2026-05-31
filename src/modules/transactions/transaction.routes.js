@@ -10,15 +10,14 @@ router.post('/webhook', controller.midtransWebhook);
 router.use(requireAuth);
 
 router.post('/create', controller.createTransaction);
-// TODO
-// router.post('/cancel', controller.cancelTransaction);
-// router.get('/history', controller.getTransactionHistory);
-// router.get('/(:transactionId)', controller.getTransactionDetails);
+
+router.post('/:transactionId/cancel', controller.cancelTransaction);
+router.get('/history', controller.getTransactionHistory);
+router.get('/:transactionId', controller.getTransactionDetails);
 
 router.use(requireRole('pengurus'));
 
 // Cash handling
-//router.get('/transactions', controller.getAllTransactions);
 router.get('/cash/pending', controller.getPendingCash);
 router.post('/cash/confirm', controller.confirmCash);
 
