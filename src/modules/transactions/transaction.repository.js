@@ -2,9 +2,34 @@
 const db = require('../../config/db');
 const { getCachedCatalogPrice } = require('../../utils/pricing-cache.util');
 
+const TRANSACTION_SELECT_FIELDS = `
+    t.id,
+    t.user_id,
+    t.amount,
+    t.payment_method,
+    t.status,
+    t.penalty_amount,
+    t.catalog_code AS transaction_type,
+    c.family AS transaction_family,
+    t.account_tier_code,
+    t.order_id,
+    t.payment_url,
+    t.snap_token,
+    t.expire_at,
+    t.created_at,
+    t.settled_at
+`;
+
 const getUserForTransaction = async (userId) => {
     const { rows } = await db.query(
-        'SELECT id, email, full_name, membership_price_code, penalty_amount FROM users WHERE id = $1 AND is_verified = TRUE',
+        `SELECT u.id,
+                u.email,
+                u.full_name,
+                u.penalty_amount,
+                uat.account_tier_code AS membership_price_code
+         FROM users u
+         LEFT JOIN user_account_tiers uat ON uat.user_id = u.id
+         WHERE u.id = $1 AND u.is_verified = TRUE`,
         [userId]
     );
     return rows[0];
@@ -45,12 +70,13 @@ const getPricingCatalogPrice = async (catalogCode, tierCode) => {
 
 const getActiveOrderByUserId = async (userId) => {
     const { rows } = await db.query(
-        `SELECT *
-         FROM transactions
-         WHERE user_id = $1
-           AND status = 'PENDING'
-           AND (expire_at IS NULL OR expire_at > NOW())
-         ORDER BY created_at DESC
+        `SELECT ${TRANSACTION_SELECT_FIELDS}
+         FROM transactions t
+         JOIN pricing_catalog c ON c.code = t.catalog_code
+         WHERE t.user_id = $1
+           AND t.status = 'PENDING'
+           AND (t.expire_at IS NULL OR t.expire_at > NOW())
+         ORDER BY t.created_at DESC
          LIMIT 1`,
         [userId]
     );
@@ -58,16 +84,27 @@ const getActiveOrderByUserId = async (userId) => {
 };
 
 const createTransaction = async (data) => {
-    const { userId, amount, paymentMethod, transactionType, transactionFamily, expireAt, orderId, paymentUrl, snapToken, penaltyAmount } = data;
+    const { userId, amount, paymentMethod, transactionType, accountTierCode, expireAt, orderId, paymentUrl, snapToken, penaltyAmount } = data;
     
     const { rows } = await db.query(
         `INSERT INTO transactions 
-        (user_id, amount, payment_method, transaction_family, transaction_type, order_id, expire_at, payment_url, snap_token, penalty_amount) 
+        (user_id, amount, payment_method, catalog_code, account_tier_code, order_id, expire_at, payment_url, snap_token, penalty_amount) 
         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) 
-        RETURNING *`,
-        [userId, amount, paymentMethod, transactionFamily, transactionType, orderId, expireAt, paymentUrl, snapToken, penaltyAmount || 0]
+        RETURNING id`,
+        [userId, amount, paymentMethod, transactionType, accountTierCode || null, orderId, expireAt, paymentUrl, snapToken, penaltyAmount || 0]
     );
-    return rows[0];
+    const transactionId = rows[0]?.id;
+    if (!transactionId) return null;
+
+    const { rows: fullRows } = await db.query(
+        `SELECT ${TRANSACTION_SELECT_FIELDS}
+         FROM transactions t
+         JOIN pricing_catalog c ON c.code = t.catalog_code
+         WHERE t.id = $1`,
+        [transactionId]
+    );
+
+    return fullRows[0];
 };
 
 const isMembershipTransaction = (transaction) => (
@@ -78,8 +115,9 @@ const isMembershipTransaction = (transaction) => (
 const getPendingCashTransactions = async () => {
     // Only fetch cash transactions that haven't expired yet
     const { rows } = await db.query(
-        `SELECT t.*, u.full_name, u.email 
+        `SELECT ${TRANSACTION_SELECT_FIELDS}, u.full_name, u.email
          FROM transactions t
+         JOIN pricing_catalog c ON c.code = t.catalog_code
          JOIN users u ON t.user_id = u.id AND u.is_verified = TRUE
          WHERE t.payment_method = 'CASH' 
          AND t.status = 'PENDING' 
@@ -91,18 +129,50 @@ const getPendingCashTransactions = async () => {
 
 const updateTransactionExpiry = async (transactionId, expireAt) => {
 	const { rows } = await db.query(
-		'UPDATE transactions SET expire_at = $1 WHERE id = $2 RETURNING *',
+		'UPDATE transactions SET expire_at = $1 WHERE id = $2 RETURNING id',
 		[expireAt, transactionId]
 	);
-	return rows[0];
+	if (!rows[0]) return null;
+
+    const { rows: fullRows } = await db.query(
+        `SELECT ${TRANSACTION_SELECT_FIELDS}
+         FROM transactions t
+         JOIN pricing_catalog c ON c.code = t.catalog_code
+         WHERE t.id = $1`,
+        [transactionId]
+    );
+
+    return fullRows[0];
 };
 
 const updateTransactionSettledAt = async (transactionId, settledAt) => {
     const { rows } = await db.query(
-        'UPDATE transactions SET settled_at = $1 WHERE id = $2 RETURNING *',
+        'UPDATE transactions SET settled_at = $1 WHERE id = $2 RETURNING id',
         [settledAt, transactionId]
     );
-    return rows[0];
+    if (!rows[0]) return null;
+
+    const { rows: fullRows } = await db.query(
+        `SELECT ${TRANSACTION_SELECT_FIELDS}
+         FROM transactions t
+         JOIN pricing_catalog c ON c.code = t.catalog_code
+         WHERE t.id = $1`,
+        [transactionId]
+    );
+
+    return fullRows[0];
+};
+
+const expireStaleTransactions = async () => {
+    const { rowCount } = await db.query(
+        `UPDATE transactions
+         SET status = 'FAILED'
+         WHERE status = 'PENDING'
+           AND expire_at IS NOT NULL
+           AND expire_at <= NOW()`
+    );
+
+    return rowCount;
 };
 
 const cancelMembershipByTransactionId = async (client, transactionId) => {
@@ -128,7 +198,10 @@ const restorePenaltyAmount = async (client, transaction) => {
 
 const getTransactionByOrderId = async (orderId) => {
     const { rows } = await db.query(
-        'SELECT * FROM transactions WHERE order_id = $1',
+        `SELECT ${TRANSACTION_SELECT_FIELDS}
+         FROM transactions t
+         JOIN pricing_catalog c ON c.code = t.catalog_code
+         WHERE t.order_id = $1`,
         [orderId]
     );
     return rows[0];
@@ -136,18 +209,81 @@ const getTransactionByOrderId = async (orderId) => {
 
 const getCashTransactionById = async (transactionId) => {
     const { rows } = await db.query(
-        `SELECT *
-         FROM transactions
-         WHERE id = $1
-           AND payment_method = 'CASH'`,
+                `SELECT ${TRANSACTION_SELECT_FIELDS}
+                 FROM transactions t
+                 JOIN pricing_catalog c ON c.code = t.catalog_code
+                 WHERE t.id = $1
+                     AND t.payment_method = 'CASH'`,
         [transactionId]
     );
     return rows[0];
 };
 
+const getTransactionById = async (transactionId) => {
+    const { rows } = await db.query(
+        `SELECT ${TRANSACTION_SELECT_FIELDS}, u.full_name, u.email, u.role
+         FROM transactions t
+         JOIN pricing_catalog c ON c.code = t.catalog_code
+         LEFT JOIN users u ON u.id = t.user_id
+         WHERE t.id = $1`,
+        [transactionId]
+    );
+
+    return rows[0];
+};
+
+const getTransactionByIdForUser = async (transactionId, userId) => {
+    const { rows } = await db.query(
+                `SELECT ${TRANSACTION_SELECT_FIELDS}, u.full_name, u.email, u.role
+                 FROM transactions t
+                 JOIN pricing_catalog c ON c.code = t.catalog_code
+                 LEFT JOIN users u ON u.id = t.user_id
+                 WHERE t.id = $1
+                     AND t.user_id = $2`,
+        [transactionId, userId]
+    );
+
+    return rows[0];
+};
+
+const getTransactionsHistory = async ({ userId, isPengurus, limit, offset }) => {
+    const whereClause = isPengurus ? '' : 'WHERE t.user_id = $1';
+    const baseParams = isPengurus ? [] : [userId];
+    const limitParamIndex = baseParams.length + 1;
+    const offsetParamIndex = baseParams.length + 2;
+
+    const [dataResult, countResult] = await Promise.all([
+        db.query(
+            `SELECT ${TRANSACTION_SELECT_FIELDS}, u.full_name, u.email, u.role
+             FROM transactions t
+             JOIN pricing_catalog c ON c.code = t.catalog_code
+             LEFT JOIN users u ON u.id = t.user_id
+             ${whereClause}
+             ORDER BY t.created_at DESC
+             LIMIT $${limitParamIndex} OFFSET $${offsetParamIndex}`,
+            [...baseParams, limit, offset]
+        ),
+        db.query(
+            `SELECT COUNT(*)::int AS count
+             FROM transactions t
+             ${whereClause}`,
+            baseParams
+        )
+    ]);
+
+    return {
+        rows: dataResult.rows,
+        totalCount: countResult.rows[0]?.count ?? 0
+    };
+};
+
 const lockTransactionForUpdate = async (client, transactionId) => {
     const { rows } = await client.query(
-        'SELECT * FROM transactions WHERE id = $1 FOR UPDATE',
+        `SELECT ${TRANSACTION_SELECT_FIELDS}
+         FROM transactions t
+         JOIN pricing_catalog c ON c.code = t.catalog_code
+         WHERE t.id = $1
+         FOR UPDATE OF t`,
         [transactionId]
     );
 
@@ -255,11 +391,20 @@ const processFailedPayment = async (transactionId) => {
         }
 
         const { rows } = await client.query(
-            'UPDATE transactions SET status = $1 WHERE id = $2 RETURNING *',
+            'UPDATE transactions SET status = $1 WHERE id = $2 RETURNING id',
             ['FAILED', transactionId]
         );
+        if (!rows[0]) return null;
 
-        return rows[0];
+        const { rows: fullRows } = await client.query(
+            `SELECT ${TRANSACTION_SELECT_FIELDS}
+             FROM transactions t
+             JOIN pricing_catalog c ON c.code = t.catalog_code
+             WHERE t.id = $1`,
+            [transactionId]
+        );
+
+        return fullRows[0];
     });
 };
 
@@ -280,11 +425,20 @@ const processRefundedPayment = async (transactionId) => {
         await restorePenaltyAmount(client, current);
 
         const { rows } = await client.query(
-            'UPDATE transactions SET status = $1 WHERE id = $2 RETURNING *',
+            'UPDATE transactions SET status = $1 WHERE id = $2 RETURNING id',
             ['REFUNDED', transactionId]
         );
+        if (!rows[0]) return null;
 
-        return rows[0];
+        const { rows: fullRows } = await client.query(
+            `SELECT ${TRANSACTION_SELECT_FIELDS}
+             FROM transactions t
+             JOIN pricing_catalog c ON c.code = t.catalog_code
+             WHERE t.id = $1`,
+            [transactionId]
+        );
+
+        return fullRows[0];
     });
 };
 
@@ -296,7 +450,11 @@ module.exports = {
     createTransaction, 
     getPendingCashTransactions,
     updateTransactionExpiry,
+	expireStaleTransactions,
 	getCashTransactionById,
+	getTransactionById,
+	getTransactionByIdForUser,
+	getTransactionsHistory,
 	getTransactionByOrderId,
     processRefundedPayment,
     processSuccessfulPayment,

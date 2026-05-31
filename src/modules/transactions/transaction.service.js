@@ -25,8 +25,9 @@ const createPayment = async (userId, payload) => {
         throw new Error('Pricing option not found');
     }
 
+    const accountTierCode = user.membership_price_code || 'UMUM';
     const basePrice = parseFloat(
-        await repository.getPricingCatalogPrice(payload.transactionType, user.membership_price_code || 'UMUM')
+        await repository.getPricingCatalogPrice(payload.transactionType, accountTierCode)
     );
 
     if (Number.isNaN(basePrice)) {
@@ -86,7 +87,7 @@ const createPayment = async (userId, payload) => {
         amount: grossAmount,
         paymentMethod: payload.paymentMethod,
         transactionType: payload.transactionType,
-        transactionFamily: catalogItem.family,
+        accountTierCode,
         orderId,
         expireAt,
         paymentUrl,
@@ -101,6 +102,74 @@ const createPayment = async (userId, payload) => {
 
 const getCashPayments = async () => {
     return await repository.getPendingCashTransactions();
+};
+
+const getTransactionHistory = async (userId, role, page, limit) => {
+    const offset = (page - 1) * limit;
+    const { rows, totalCount } = await repository.getTransactionsHistory({
+        userId,
+        isPengurus: role === 'pengurus',
+        limit,
+        offset
+    });
+
+    return {
+        page,
+        limit,
+        total_pages: Math.ceil(totalCount / limit),
+        data: rows
+    };
+};
+
+const getTransactionDetails = async (userId, role, transactionId) => {
+    const transaction = role === 'pengurus'
+        ? await repository.getTransactionById(transactionId)
+        : await repository.getTransactionByIdForUser(transactionId, userId);
+
+    if (!transaction) {
+        const err = new Error('Transaction not found');
+        err.status = 404;
+        throw err;
+    }
+
+    return transaction;
+};
+
+const cancelTransaction = async (userId, role, transactionId) => {
+    const transaction = role === 'pengurus'
+        ? await repository.getTransactionById(transactionId)
+        : await repository.getTransactionByIdForUser(transactionId, userId);
+
+    if (!transaction) {
+        const err = new Error('Transaction not found');
+        err.status = 404;
+        throw err;
+    }
+
+    if (transaction.status !== 'PENDING') {
+        const err = new Error('Only pending transactions can be cancelled');
+        err.status = 409;
+        throw err;
+    }
+
+    if (transaction.payment_method === 'QRIS') {
+        if (!transaction.order_id) {
+            const err = new Error('Transaction order id is missing');
+            err.status = 500;
+            throw err;
+        }
+
+        try {
+            await snap.transaction.cancel(transaction.order_id);
+        } catch (error) {
+            const err = new Error(error?.message || 'Failed to cancel Midtrans transaction');
+            err.status = error?.httpStatusCode || 502;
+            err.data = error?.ApiResponse || null;
+            throw err;
+        }
+    }
+
+    return await repository.processFailedPayment(transaction.id);
 };
 
 const confirmCashPayment = async (transactionId, status) => {
@@ -225,6 +294,9 @@ const handleMidtransWebhook = async (notificationPayload) => {
 module.exports = {
 	createPayment,
 	getCashPayments,
+    getTransactionHistory,
+    getTransactionDetails,
+    cancelTransaction,
 	confirmCashPayment,
 	handleMidtransWebhook
 };
