@@ -2,7 +2,7 @@ const cron = require('node-cron');
 const authRepository = require('../modules/auth/auth.repository');
 
 const initAuthCronJobs = () => {
-    cron.schedule('*/5 * * * *', async () => {
+    cron.schedule('*/3 * * * *', async () => {
         try {
             const expiredCount = await authRepository.expireStaleChallenges();
             if (expiredCount > 0) {

@@ -6,6 +6,7 @@ const cookieParser = require('cookie-parser');
 const http = require('http');
 const { xss } = require('express-xss-sanitizer');
 const { ZodError } = require('zod');
+const { initDevAdmin } = require('./utils/dev-admin.util');
 
 const authRoutes = require('./modules/auth/auth.routes');
 const transactionRoutes = require('./modules/transactions/transaction.routes');
@@ -18,6 +19,7 @@ const activityRoutes = require('./modules/activities/activity.routes');
 const userRoutes = require('./modules/users/user.routes');
 const { initCronJobs } = require('./cron/penalty.cron');
 const { initAuthCronJobs } = require('./cron/auth.cron');
+const { initTransactionCronJobs } = require('./cron/transaction.cron');
 const responseHandler = require('./middlewares/response.middleware');
 const { initSocket } = require('./config/socket');
 
@@ -28,6 +30,10 @@ app.use(responseHandler);
 
 initCronJobs();
 initAuthCronJobs();
+initTransactionCronJobs();
+initDevAdmin().catch((error) => {
+	console.warn('Failed to ensure dev admin user', error);
+});
 
 // Middlewares
 app.use(helmet());
