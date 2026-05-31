@@ -7,11 +7,13 @@ const getAllUsers = async (limit, offset) => {
                 u.full_name,
                 u.profile_image_url,
                 u.role,
+                uat.account_tier_code AS membership_price_code,
                 t.name AS tier,
                 u.penalty_amount,
                 u.created_at
          FROM users u
-         LEFT JOIN pricing_account_tiers t ON t.code = u.membership_price_code
+         LEFT JOIN user_account_tiers uat ON uat.user_id = u.id
+         LEFT JOIN pricing_account_tiers t ON t.code = uat.account_tier_code
          WHERE u.is_verified = TRUE
          ORDER BY u.created_at DESC 
          LIMIT $1 OFFSET $2`,
@@ -33,13 +35,14 @@ const getUserById = async (id) => {
                 u.profile_image_url,
                 u.role,
                 u.is_verified,
+                uat.account_tier_code AS membership_price_code,
                 t.name AS tier,
-                u.membership_price_code,
                 u.penalty_amount,
                 u.created_at,
                 u.updated_at
          FROM users u
-         LEFT JOIN pricing_account_tiers t ON t.code = u.membership_price_code
+         LEFT JOIN user_account_tiers uat ON uat.user_id = u.id
+         LEFT JOIN pricing_account_tiers t ON t.code = uat.account_tier_code
                  WHERE u.id = $1
                      AND u.is_verified = TRUE`,
         [id]
@@ -49,52 +52,122 @@ const getUserById = async (id) => {
 };
 
 const createUser = async (data) => {
-    const { email, passwordHash, fullName, role, membershipPriceCode, penaltyAmount, profileImageUrl } = data;
-    const { rows } = await db.query(
-        `WITH inserted AS (
-            INSERT INTO users (
+    return await db.withTransaction(async (client) => {
+        const { email, passwordHash, fullName, role, membershipPriceCode, penaltyAmount, profileImageUrl } = data;
+
+        const { rows: insertedRows } = await client.query(
+            `INSERT INTO users (
                 email,
-                password_hash,
+                password,
                 full_name,
                 role,
-                membership_price_code,
                 penalty_amount,
                 profile_image_url,
                 is_verified,
                 verified_at
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, TRUE, NOW())
-            RETURNING id, email, full_name, profile_image_url, role, is_verified, membership_price_code, penalty_amount, created_at, updated_at
-        )
-         SELECT inserted.*, t.name AS tier
-         FROM inserted
-         LEFT JOIN pricing_account_tiers t ON t.code = inserted.membership_price_code`,
-        [email, passwordHash, fullName, role, membershipPriceCode || null, penaltyAmount || 0, profileImageUrl]
-    );
+            ) VALUES ($1, $2, $3, $4, $5, $6, TRUE, NOW())
+            RETURNING id, email, full_name, profile_image_url, role, is_verified, penalty_amount, created_at, updated_at`,
+            [email, passwordHash, fullName, role, penaltyAmount || 0, profileImageUrl]
+        );
 
-    return rows[0];
+        const user = insertedRows[0];
+        if (!user) return null;
+
+        if (membershipPriceCode) {
+            await client.query(
+                `INSERT INTO user_account_tiers (user_id, account_tier_code)
+                 VALUES ($1, $2)
+                 ON CONFLICT (user_id) DO UPDATE
+                 SET account_tier_code = EXCLUDED.account_tier_code,
+                     assigned_at = NOW()`,
+                [user.id, membershipPriceCode]
+            );
+        }
+
+        const { rows } = await client.query(
+            `SELECT u.id,
+                    u.email,
+                    u.full_name,
+                    u.profile_image_url,
+                    u.role,
+                    u.is_verified,
+                    u.penalty_amount,
+                    u.created_at,
+                    u.updated_at,
+                    uat.account_tier_code AS membership_price_code,
+                    t.name AS tier
+             FROM users u
+             LEFT JOIN user_account_tiers uat ON uat.user_id = u.id
+             LEFT JOIN pricing_account_tiers t ON t.code = uat.account_tier_code
+             WHERE u.id = $1`,
+            [user.id]
+        );
+
+        return rows[0];
+    });
 };
 
 const updateUser = async (id, data) => {
-    const { email, fullName, role, membershipPriceCode, penaltyAmount } = data;
-    const { rows } = await db.query(
-        `WITH updated AS (
-            UPDATE users SET 
+    return await db.withTransaction(async (client) => {
+        const { email, fullName, role, membershipPriceCode, penaltyAmount, passwordHash, profileImageUrl } = data;
+
+        const { rows: updatedRows } = await client.query(
+            `UPDATE users SET 
                 email = COALESCE($1, email),
                 full_name = COALESCE($2, full_name),
                 role = COALESCE($3, role), 
-                membership_price_code = COALESCE($4, membership_price_code),
-                penalty_amount = COALESCE($5, penalty_amount),
+                penalty_amount = COALESCE($4, penalty_amount),
+                password = COALESCE($5, password),
+                profile_image_url = COALESCE($6, profile_image_url),
                 updated_at = NOW()
-            WHERE id = $6
+            WHERE id = $7
               AND is_verified = TRUE
-            RETURNING id, email, full_name, profile_image_url, role, penalty_amount, membership_price_code, is_verified, created_at, updated_at
-        )
-         SELECT updated.*, t.name AS tier
-         FROM updated
-         LEFT JOIN pricing_account_tiers t ON t.code = updated.membership_price_code`,
-        [email, fullName, role, membershipPriceCode, penaltyAmount, id]
-    );
-    return rows[0];
+            RETURNING id`,
+            [email, fullName, role, penaltyAmount, passwordHash, profileImageUrl, id]
+        );
+
+        if (!updatedRows[0]) return null;
+
+        const hasMembershipPriceCode = Object.prototype.hasOwnProperty.call(data, 'membershipPriceCode');
+        if (hasMembershipPriceCode) {
+            if (membershipPriceCode) {
+                await client.query(
+                    `INSERT INTO user_account_tiers (user_id, account_tier_code)
+                     VALUES ($1, $2)
+                     ON CONFLICT (user_id) DO UPDATE
+                     SET account_tier_code = EXCLUDED.account_tier_code,
+                         assigned_at = NOW()`,
+                    [id, membershipPriceCode]
+                );
+            } else {
+                await client.query(
+                    `DELETE FROM user_account_tiers WHERE user_id = $1`,
+                    [id]
+                );
+            }
+        }
+
+        const { rows } = await client.query(
+            `SELECT u.id,
+                    u.email,
+                    u.full_name,
+                    u.profile_image_url,
+                    u.role,
+                    u.is_verified,
+                    u.penalty_amount,
+                    u.created_at,
+                    u.updated_at,
+                    uat.account_tier_code AS membership_price_code,
+                    t.name AS tier
+             FROM users u
+             LEFT JOIN user_account_tiers uat ON uat.user_id = u.id
+             LEFT JOIN pricing_account_tiers t ON t.code = uat.account_tier_code
+             WHERE u.id = $1`,
+            [id]
+        );
+
+        return rows[0];
+    });
 };
 
 const invalidateUser = async (id) => {
