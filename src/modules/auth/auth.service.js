@@ -2,7 +2,10 @@ const bcrypt = require('bcrypt');
 const crypto = require('crypto');
 const db = require('../../config/db');
 const repository = require('./auth.repository');
-const { sendVerificationEmail, sendPasswordResetOtpEmail } = require('../../utils/email.util');
+const {
+    queueVerificationEmail,
+    queuePasswordResetOtpEmail,
+} = require('../../utils/email-queue.util');
 const { generateAccessToken, generateRefreshToken } = require('../../utils/jwt.util');
 const { uploadToCloudinary } = require('../../utils/cloudinary.util');
 
@@ -26,6 +29,44 @@ const hashValue = (value) => crypto.createHash('sha256').update(value).digest('h
 const generateVerificationToken = () => crypto.randomBytes(32).toString('hex');
 
 const generateOtpCode = () => crypto.randomInt(0, 1000000).toString().padStart(6, '0');
+
+const getRetryDelayMs = (challenge) => {
+    if (challenge?.next_resend_at) {
+        const nextResendAt = new Date(challenge.next_resend_at);
+        if (!Number.isNaN(nextResendAt.getTime())) {
+            return Math.max(0, nextResendAt.getTime() - Date.now());
+        }
+    }
+
+    if (challenge?.expires_at) {
+        const expiresAt = new Date(challenge.expires_at);
+        if (!Number.isNaN(expiresAt.getTime())) {
+            return Math.max(0, expiresAt.getTime() - Date.now());
+        }
+    }
+
+    return 0;
+};
+
+const getExpiryIso = (challenge) => {
+    if (!challenge?.expires_at) return '-';
+    const expiresAt = new Date(challenge.expires_at);
+    if (Number.isNaN(expiresAt.getTime())) return '-';
+    return expiresAt.toISOString();
+};
+
+const buildChallengePayload = (challengeType, challenge) => ({
+    challenge_type: challengeType,
+    expires_at: getExpiryIso(challenge),
+    retry_in_ms: getRetryDelayMs(challenge),
+});
+
+const createServiceError = (message, status, data) => {
+    const error = new Error(message);
+    error.status = status;
+    error.data = data;
+    return error;
+};
 
 const determineMembershipTier = async (email) => {
     const normalizedEmail = String(email || '').toLowerCase();
@@ -66,7 +107,14 @@ const register = async (data, fileBuffer) => {
         ? await repository.getActiveChallenge(data.email, CHALLENGE_TYPES.EMAIL_VERIFICATION)
         : null;
 
-    if (existingUser && (existingUser.is_verified || !activeVerification)) {
+    if (existingUser && (existingUser.is_verified || activeVerification)) {
+        if (activeVerification) {
+            throw createServiceError(
+                'Verification email already sent.',
+                409,
+                buildChallengePayload(CHALLENGE_TYPES.EMAIL_VERIFICATION, activeVerification)
+            );
+        }
         throw new Error('Email already registered');
     }
 
@@ -110,7 +158,7 @@ const register = async (data, fileBuffer) => {
         return { user: savedUser, challenge: savedChallenge };
     });
 
-    await sendVerificationEmail(user.email, user.full_name, verificationToken);
+    await queueVerificationEmail(user.email, user.full_name, verificationToken);
     return { user, challenge };
 };
 
@@ -121,7 +169,7 @@ const login = async (data) => {
     if (!user.is_verified) {
         const activeVerification = await repository.getActiveChallenge(data.email, CHALLENGE_TYPES.EMAIL_VERIFICATION);
         if (activeVerification) {
-            throw new Error('Please verify your email first');
+            throw new Error('Verification is still active. Please check your email.');
         }
 
         throw new Error('Account is inactive');
@@ -192,7 +240,7 @@ const requestPasswordReset = async (email) => {
         nextResendAt: new Date(Date.now() + OTP_RETRY_DELAYS_MS[0]),
     });
 
-    await sendPasswordResetOtpEmail(user.email, user.full_name, otp);
+    await queuePasswordResetOtpEmail(user.email, user.full_name, otp);
     return true;
 };
 
@@ -203,7 +251,9 @@ const resendPasswordResetOtp = async (email) => {
     }
 	
 	const challenge = await repository.getActiveChallenge(email, CHALLENGE_TYPES.PASSWORD_RESET);
-    if (!challenge) throw new Error('No active OTP found. Please request a new one');
+    if (!challenge) {
+        return true;
+    }
 
     if (challenge.resend_count >= 2) {
         throw new Error('OTP resend limit reached');
@@ -218,7 +268,7 @@ const resendPasswordResetOtp = async (email) => {
     const nextResendAt = new Date(Date.now() + OTP_RETRY_DELAYS_MS[Math.min(challenge.resend_count + 1, 1)]);
 
     await repository.updatePasswordResetOtp(challenge.id, otpHash, nextResendAt);
-    await sendPasswordResetOtpEmail(user.email, user.full_name, otp);
+    await queuePasswordResetOtpEmail(user.email, user.full_name, otp);
     return true;
 };
 

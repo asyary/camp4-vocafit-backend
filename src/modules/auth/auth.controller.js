@@ -4,7 +4,8 @@ const { setTokens, clearTokens } = require('../../utils/cookie.util');
 
 const register = async (req, res, next) => {
     try {
-        const parsedBody = registerSchema.parse(req.body);
+        const parsedBody = registerSchema.parse({ ...req.body, image: req.file });
+
         const fileBuffer = req.file.buffer;
 
         await authService.register(parsedBody, fileBuffer);
