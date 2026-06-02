@@ -22,6 +22,7 @@ const { initAuthCronJobs } = require('./cron/auth.cron');
 const { initTransactionCronJobs } = require('./cron/transaction.cron');
 const responseHandler = require('./middlewares/response.middleware');
 const { initSocket } = require('./config/socket');
+const { startEmailQueueWorker } = require('./utils/email-queue.util');
 
 const app = express();
 const server = http.createServer(app);
@@ -31,6 +32,9 @@ app.use(responseHandler);
 initCronJobs();
 initAuthCronJobs();
 initTransactionCronJobs();
+startEmailQueueWorker().catch((error) => {
+    console.error('Failed to start email queue worker', error);
+});
 initDevAdmin().catch((error) => {
 	console.warn('Failed to ensure dev admin user', error);
 });

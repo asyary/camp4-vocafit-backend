@@ -11,10 +11,10 @@ const TRANSACTION_SELECT_FIELDS = `
     t.penalty_amount,
     t.catalog_code AS transaction_type,
     c.family AS transaction_family,
+    c.name AS catalog_name,
     t.account_tier_code,
     t.order_id,
     t.payment_url,
-    t.snap_token,
     t.expire_at,
     t.created_at,
     t.settled_at
@@ -115,10 +115,9 @@ const isMembershipTransaction = (transaction) => (
 const getPendingCashTransactions = async () => {
     // Only fetch cash transactions that haven't expired yet
     const { rows } = await db.query(
-        `SELECT ${TRANSACTION_SELECT_FIELDS}, u.full_name, u.email
+        `SELECT ${TRANSACTION_SELECT_FIELDS}
          FROM transactions t
          JOIN pricing_catalog c ON c.code = t.catalog_code
-         JOIN users u ON t.user_id = u.id AND u.is_verified = TRUE
          WHERE t.payment_method = 'CASH' 
          AND t.status = 'PENDING' 
          AND t.expire_at > NOW()
@@ -201,6 +200,7 @@ const getTransactionByOrderId = async (orderId) => {
         `SELECT ${TRANSACTION_SELECT_FIELDS}
          FROM transactions t
          JOIN pricing_catalog c ON c.code = t.catalog_code
+         LEFT JOIN users u ON u.id = t.user_id
          WHERE t.order_id = $1`,
         [orderId]
     );
@@ -212,6 +212,7 @@ const getCashTransactionById = async (transactionId) => {
                 `SELECT ${TRANSACTION_SELECT_FIELDS}
                  FROM transactions t
                  JOIN pricing_catalog c ON c.code = t.catalog_code
+                 LEFT JOIN users u ON u.id = t.user_id
                  WHERE t.id = $1
                      AND t.payment_method = 'CASH'`,
         [transactionId]
@@ -221,7 +222,7 @@ const getCashTransactionById = async (transactionId) => {
 
 const getTransactionById = async (transactionId) => {
     const { rows } = await db.query(
-        `SELECT ${TRANSACTION_SELECT_FIELDS}, u.full_name, u.email, u.role
+        `SELECT ${TRANSACTION_SELECT_FIELDS}
          FROM transactions t
          JOIN pricing_catalog c ON c.code = t.catalog_code
          LEFT JOIN users u ON u.id = t.user_id
@@ -234,7 +235,7 @@ const getTransactionById = async (transactionId) => {
 
 const getTransactionByIdForUser = async (transactionId, userId) => {
     const { rows } = await db.query(
-                `SELECT ${TRANSACTION_SELECT_FIELDS}, u.full_name, u.email, u.role
+                `SELECT ${TRANSACTION_SELECT_FIELDS}
                  FROM transactions t
                  JOIN pricing_catalog c ON c.code = t.catalog_code
                  LEFT JOIN users u ON u.id = t.user_id
@@ -254,7 +255,7 @@ const getTransactionsHistory = async ({ userId, isPengurus, limit, offset }) => 
 
     const [dataResult, countResult] = await Promise.all([
         db.query(
-            `SELECT ${TRANSACTION_SELECT_FIELDS}, u.full_name, u.email, u.role
+            `SELECT ${TRANSACTION_SELECT_FIELDS}
              FROM transactions t
              JOIN pricing_catalog c ON c.code = t.catalog_code
              LEFT JOIN users u ON u.id = t.user_id

@@ -2,6 +2,7 @@
 const { snap } = require('../../config/midtrans');
 const repository = require('./transaction.repository');
 const crypto = require('crypto');
+const { queueOrderInvoiceEmail, queuePaymentReceiptEmail } = require('../../utils/email-queue.util');
 
 const MIDTRANS_SUCCESS_STATUSES = new Set(['capture', 'settlement']);
 const MIDTRANS_FAILURE_STATUSES = new Set(['deny', 'expire', 'cancel']);
@@ -16,7 +17,6 @@ const createPayment = async (userId, payload) => {
         const err = new Error('You already have an active order');
         err.status = 409;
         err.data = { ...activeOrder };
-        delete err.data.snap_token;
         throw err;
     }
 
@@ -95,7 +95,21 @@ const createPayment = async (userId, payload) => {
         penaltyAmount
     });
 
-	delete transaction.snap_token;
+    try {
+        await queueOrderInvoiceEmail({
+            to: user.email,
+            name: user.full_name,
+            orderId,
+            paymentMethod: payload.paymentMethod,
+            amount: grossAmount,
+            penaltyAmount,
+            itemName: catalogItem.name,
+            expireAt,
+            paymentUrl,
+        });
+    } catch (error) {
+        console.error('Failed to send invoice email:', error.message || error);
+    }
 	
     return transaction;
 };
@@ -162,8 +176,9 @@ const cancelTransaction = async (userId, role, transactionId) => {
         try {
             await snap.transaction.cancel(transaction.order_id);
         } catch (error) {
-            const err = new Error(error?.message || 'Failed to cancel Midtrans transaction');
-            err.status = error?.httpStatusCode || 502;
+            const err = new Error('Failed to cancel Midtrans transaction');
+            const parsedStatus = Number.parseInt(error?.httpStatusCode, 10);
+            err.status = Number.isInteger(parsedStatus) ? parsedStatus : 502;
             err.data = error?.ApiResponse || null;
             throw err;
         }
@@ -180,6 +195,22 @@ const confirmCashPayment = async (transactionId, status) => {
 
     if (status === 'SUCCESS') {
         await repository.processSuccessfulPayment(transaction);
+
+        try {
+            const user = await repository.getUserForTransaction(transaction.user_id);
+            await queuePaymentReceiptEmail({
+                to: user?.email,
+                name: user?.full_name,
+                orderId: transaction.order_id,
+                paymentMethod: transaction.payment_method,
+                amount: transaction.amount,
+                penaltyAmount: transaction.penalty_amount,
+                itemName: transaction.catalog_name,
+                paidAt: new Date(),
+            });
+        } catch (error) {
+            console.error('Failed to send receipt email:', error.message || error);
+        }
     } else {
         await repository.processFailedPayment(transaction.id);
     }
@@ -234,6 +265,22 @@ const handleMidtransWebhook = async (notificationPayload) => {
         // 'capture' is considered successful by Midtrans, even if funds are not settled yet.
         if (transaction.status !== 'SUCCESS') {
             await repository.processSuccessfulPayment(transaction);
+
+            try {
+                const user = await repository.getUserForTransaction(transaction.user_id);
+                await queuePaymentReceiptEmail({
+                    to: user?.email,
+                    name: user?.full_name,
+                    orderId: transaction.order_id,
+                    paymentMethod: transaction.payment_method,
+                    amount: transaction.amount,
+                    penaltyAmount: transaction.penalty_amount,
+                    itemName: transaction.catalog_name,
+                    paidAt: new Date(),
+                });
+            } catch (error) {
+                console.error('Failed to send receipt email:', error.message || error);
+            }
         }
 
         if (transaction_status === 'settlement' && !transaction.settled_at) {
