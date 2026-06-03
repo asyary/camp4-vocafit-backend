@@ -1,6 +1,7 @@
 const express = require('express');
 const controller = require('./trainer.controller');
-const { requireAuth, requireRole } = require('../../middlewares/auth.middleware');
+const packageController = require('./trainer.package.controller');
+const { requireAuth, requireRole, requireMembership } = require('../../middlewares/auth.middleware');
 const upload = require('../../middlewares/upload.middleware');
 
 const router = express.Router();
@@ -8,11 +9,16 @@ const router = express.Router();
 // Public
 router.get('/', controller.getTrainers);
 
-// Admin
 router.use(requireAuth);
-router.use(requireRole('pengurus'));
 
-router.post('/', upload.single('image'), controller.createTrainer);
-router.post('/schedule', controller.createSchedule);
+// Member trainer package flow
+router.get('/packages', requireMembership, packageController.getMyPackages);
+router.get('/packages/:packageId', requireMembership, packageController.getPackageDetails);
+router.post('/packages/:packageId/sessions', requireMembership, packageController.bookSession);
+router.post('/sessions/:sessionId/cancel', packageController.cancelSession);
+
+// Admin
+router.post('/', requireRole('pengurus'), upload.single('image'), controller.createTrainer);
+router.post('/schedule', requireRole('pengurus'), controller.createSchedule);
 
 module.exports = router;

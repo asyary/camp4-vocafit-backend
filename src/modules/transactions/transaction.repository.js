@@ -1,6 +1,7 @@
 // Berhati-hatilah bekerja disini hai kawand
 const db = require('../../config/db');
 const { getCachedCatalogPrice } = require('../../utils/pricing-cache.util');
+const trainerPackageRepository = require('../trainers/trainer.package.repository');
 
 const TRANSACTION_SELECT_FIELDS = `
     t.id,
@@ -13,6 +14,9 @@ const TRANSACTION_SELECT_FIELDS = `
     c.family AS transaction_family,
     c.name AS catalog_name,
     t.account_tier_code,
+    t.trainer_id,
+    t.trainer_participant_emails,
+    t.trainer_group_size,
     t.order_id,
     t.payment_url,
     t.expire_at,
@@ -45,6 +49,80 @@ const getPricingCatalogItem = async (catalogCode) => {
     );
 
     return rows[0];
+};
+
+const getTrainerById = async (trainerId) => {
+    const { rows } = await db.query(
+        `SELECT *
+         FROM trainers
+         WHERE id = $1
+           AND is_active = TRUE`,
+        [trainerId]
+    );
+
+    return rows[0];
+};
+
+const hasActiveMembership = async (userId) => {
+    const { rows } = await db.query(
+        `SELECT 1
+         FROM memberships
+         WHERE user_id = $1
+           AND end_date > NOW()
+           AND canceled_at IS NULL
+         LIMIT 1`,
+        [userId]
+    );
+
+    return rows.length > 0;
+};
+
+const getUsersByEmails = async (emails) => {
+    const normalizedEmails = Array.from(new Set(
+        (Array.isArray(emails) ? emails : [])
+            .map((email) => String(email || '').trim().toLowerCase())
+            .filter(Boolean)
+    ));
+
+    if (normalizedEmails.length === 0) return [];
+
+    const { rows } = await db.query(
+        `SELECT u.id,
+                LOWER(u.email) AS email,
+                u.full_name,
+                u.is_verified,
+                EXISTS (
+                    SELECT 1
+                    FROM memberships m
+                    WHERE m.user_id = u.id
+                      AND m.end_date > NOW()
+                      AND m.canceled_at IS NULL
+                ) AS has_active_membership
+         FROM users u
+         WHERE LOWER(u.email) = ANY($1::text[])`,
+        [normalizedEmails]
+    );
+
+    return rows;
+};
+
+const getActiveTrainerPackageConflicts = async (userIds) => {
+    if (!Array.isArray(userIds) || userIds.length === 0) return [];
+
+    const { rows } = await db.query(
+        `SELECT DISTINCT u.id AS user_id,
+                u.email,
+                tp.id AS package_id
+         FROM trainer_package_members tpm
+         JOIN trainer_packages tp ON tp.id = tpm.package_id
+         JOIN users u ON u.id = tpm.user_id
+         WHERE tpm.user_id = ANY($1::uuid[])
+           AND tp.status = 'ACTIVE'
+           AND tp.expires_at > NOW()`,
+        [userIds]
+    );
+
+    return rows;
 };
 
 const getPricingCatalogPrice = async (catalogCode, tierCode) => {
@@ -84,14 +162,43 @@ const getActiveOrderByUserId = async (userId) => {
 };
 
 const createTransaction = async (data) => {
-    const { userId, amount, paymentMethod, transactionType, accountTierCode, expireAt, orderId, paymentUrl, snapToken, penaltyAmount } = data;
+    const {
+        userId,
+        amount,
+        paymentMethod,
+        transactionType,
+        accountTierCode,
+        expireAt,
+        orderId,
+        paymentUrl,
+        snapToken,
+        penaltyAmount,
+        trainerId = null,
+        trainerParticipantEmails = null,
+        trainerGroupSize = null
+    } = data;
+    const trainerParticipantEmailsJson = trainerParticipantEmails ? JSON.stringify(trainerParticipantEmails) : null;
     
     const { rows } = await db.query(
         `INSERT INTO transactions 
-        (user_id, amount, payment_method, catalog_code, account_tier_code, order_id, expire_at, payment_url, snap_token, penalty_amount) 
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) 
+        (user_id, amount, payment_method, catalog_code, account_tier_code, trainer_id, trainer_participant_emails, trainer_group_size, order_id, expire_at, payment_url, snap_token, penalty_amount) 
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13) 
         RETURNING id`,
-        [userId, amount, paymentMethod, transactionType, accountTierCode || null, orderId, expireAt, paymentUrl, snapToken, penaltyAmount || 0]
+        [
+            userId,
+            amount,
+            paymentMethod,
+            transactionType,
+            accountTierCode || null,
+            trainerId || null,
+            trainerParticipantEmailsJson,
+            trainerGroupSize || null,
+            orderId,
+            expireAt,
+            paymentUrl,
+            snapToken,
+            penaltyAmount || 0
+        ]
     );
     const transactionId = rows[0]?.id;
     if (!transactionId) return null;
@@ -111,6 +218,8 @@ const isMembershipTransaction = (transaction) => (
     transaction?.transaction_family === 'MEMBERSHIP' ||
     String(transaction?.transaction_type || '').startsWith('MEMBERSHIP_')
 );
+
+const isTrainerTransaction = (transaction) => transaction?.transaction_family === 'PERSONAL_TRAINER';
 
 const getPendingCashTransactions = async () => {
     // Only fetch cash transactions that haven't expired yet
@@ -291,6 +400,10 @@ const lockTransactionForUpdate = async (client, transactionId) => {
     return rows[0];
 };
 
+const createTrainerPackageForTransaction = async (client, transaction) => {
+    return await trainerPackageRepository.createTrainerPackageFromTransaction(client, transaction);
+};
+
 const processSuccessfulPayment = async (transaction) => {
     // Make processing atomic and idempotent using a DB transaction
     return await db.withTransaction(async (client) => {
@@ -361,6 +474,8 @@ const processSuccessfulPayment = async (transaction) => {
                     [transaction.user_id, transaction.id, transaction.transaction_type, type, startDate, endDate]
                 );
             }
+        } else if (isTrainerTransaction(transaction)) {
+            await createTrainerPackageForTransaction(client, transaction);
         }
 
         return { ...current, status: 'SUCCESS' };
@@ -385,6 +500,10 @@ const processFailedPayment = async (transactionId) => {
 
         if (current.status === 'SUCCESS' && isMembershipTransaction(current)) {
             await cancelMembershipByTransactionId(client, current.id);
+        }
+
+        if (current.status === 'SUCCESS' && isTrainerTransaction(current)) {
+            await trainerPackageRepository.cancelTrainerPackageByTransactionId(client, current.id);
         }
 
         if (current.status === 'SUCCESS') {
@@ -421,6 +540,10 @@ const processRefundedPayment = async (transactionId) => {
 
         if (isMembershipTransaction(current)) {
             await cancelMembershipByTransactionId(client, current.id);
+        }
+
+        if (isTrainerTransaction(current)) {
+            await trainerPackageRepository.cancelTrainerPackageByTransactionId(client, current.id);
         }
 
         await restorePenaltyAmount(client, current);
@@ -461,4 +584,8 @@ module.exports = {
     processSuccessfulPayment,
     processFailedPayment,
     updateTransactionSettledAt
+    ,getTrainerById
+    ,hasActiveMembership
+    ,getUsersByEmails
+    ,getActiveTrainerPackageConflicts
 };
