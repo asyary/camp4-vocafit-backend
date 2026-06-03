@@ -20,12 +20,14 @@ const transporter = nodemailer.createTransport({
 let cachedLogoBuffer = null;
 let logoFetchPromise = null;
 
+const LOGO_FETCH_TIMEOUT_MS = 10_000;
+
 const fetchLogoBuffer = async () => {
     if (cachedLogoBuffer) return cachedLogoBuffer;
     if (logoFetchPromise) return logoFetchPromise;
 
     logoFetchPromise = new Promise((resolve) => {
-        https.get(LOGO_URL, (response) => {
+        const req = https.get(LOGO_URL, (response) => {
             if (response.statusCode !== 200) {
                 response.resume();
                 resolve(null);
@@ -35,7 +37,13 @@ const fetchLogoBuffer = async () => {
             const chunks = [];
             response.on('data', (chunk) => chunks.push(chunk));
             response.on('end', () => resolve(Buffer.concat(chunks)));
-        }).on('error', () => resolve(null));
+        });
+
+        req.on('error', () => resolve(null));
+        req.setTimeout(LOGO_FETCH_TIMEOUT_MS, () => {
+            req.destroy();
+            resolve(null);
+        });
     }).then((buffer) => {
         cachedLogoBuffer = buffer || null;
         return cachedLogoBuffer;
@@ -45,6 +53,18 @@ const fetchLogoBuffer = async () => {
 
     return logoFetchPromise;
 };
+
+const escapeHtml = (value) => {
+    const str = String(value ?? '');
+    return str
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+};
+
+const toSafeFileName = (value) => String(value || '').replace(/[^a-z0-9_-]+/gi, '_');
 
 const formatCurrency = (amount) => {
         const numericAmount = Number(amount || 0);
@@ -70,11 +90,11 @@ const buildEmailTemplate = ({ title, preheader, bodyHtml, cta }) => `
     <head>
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width,initial-scale=1">
-        <title>${title}</title>
+        <title>${escapeHtml(title)}</title>
     </head>
     <body style="margin:0;padding:0;background:#f2f5ff;font-family:Arial,sans-serif;color:#1f2a44;">
         <div style="display:none;max-height:0;overflow:hidden;opacity:0;">
-            ${preheader || ''}
+            ${escapeHtml(preheader || '')}
         </div>
         <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f2f5ff;padding:32px 16px;">
             <tr>
@@ -87,7 +107,7 @@ const buildEmailTemplate = ({ title, preheader, bodyHtml, cta }) => `
                         </tr>
                         <tr>
                             <td style="padding:28px 32px 8px;">
-                                <h1 style="margin:0 0 8px;font-size:22px;line-height:1.4;color:#060771;">${title}</h1>
+                                <h1 style="margin:0 0 8px;font-size:22px;line-height:1.4;color:#060771;">${escapeHtml(title)}</h1>
                             </td>
                         </tr>
                         <tr>
@@ -98,13 +118,13 @@ const buildEmailTemplate = ({ title, preheader, bodyHtml, cta }) => `
                         ${cta ? `
                         <tr>
                             <td style="padding:12px 32px 24px;">
-                                <a href="${cta.href}" style="display:inline-block;background:#0D0E85;color:#ffffff;text-decoration:none;font-weight:600;padding:12px 20px;border-radius:10px;">${cta.label}</a>
+                                <a href="${cta.href}" style="display:inline-block;background:#0D0E85;color:#ffffff;text-decoration:none;font-weight:600;padding:12px 20px;border-radius:10px;">${escapeHtml(cta.label)}</a>
                             </td>
                         </tr>
                         ` : ''}
                         <tr>
                             <td style="padding:20px 32px 28px;border-top:1px solid #e0e6ff;font-size:12px;line-height:1.6;color:#5a658f;">
-                                <p style="margin:0 0 6px;">Need help? Contact us at <a href="mailto:${SUPPORT_EMAIL}" style="color:#FF6C0C;text-decoration:none;">${SUPPORT_EMAIL}</a>.</p>
+                                <p style="margin:0 0 6px;">Need help? Contact us at <a href="mailto:${SUPPORT_EMAIL}" style="color:#FF6C0C;text-decoration:none;">${SUPPORT_EMAIL}</a></p>
                                 <p style="margin:0;">Vocafit, Surabaya, Indonesia</p>
                             </td>
                         </tr>
@@ -117,50 +137,63 @@ const buildEmailTemplate = ({ title, preheader, bodyHtml, cta }) => `
 `;
 
 const sendVerificationEmail = async (to, name, token) => {
-        const link = `${CLIENT_URL}/verify-email/${token}`;
+        const safeName = escapeHtml(name);
+        const link = `${CLIENT_URL}/verify-email/${encodeURIComponent(token)}`;
         const html = buildEmailTemplate({
-                title: 'Verify your Vocafit account',
+                title: 'Verify Your Vocafit Account',
                 preheader: 'Confirm your email to activate your Vocafit account.',
                 bodyHtml: `
-                        <p>Hi ${name},</p>
+                        <p>Hi ${safeName},</p>
                         <p>Thanks for joining Vocafit. Please verify your email to activate your account.</p>
                         <p>This verification link expires in 30 minutes.</p>
                 `,
                 cta: { href: link, label: 'Verify Email' },
         });
 
-        await transporter.sendMail({
-                from: EMAIL_FROM,
-                to,
-                subject: 'Verify your Vocafit account',
-                html,
-                text: `Hi ${name},\n\nVerify your Vocafit account: ${link}\n\nThis link expires in 30 minutes.\n`,
-        });
+        try {
+                await transporter.sendMail({
+                        from: EMAIL_FROM,
+                        to,
+                        subject: 'Verify Your Vocafit Account',
+                        html,
+                        text: `Hi ${name},\n\nVerify your Vocafit account: ${link}\n\nThis link expires in 30 minutes.\n`,
+                });
+        } catch (error) {
+                console.error('Failed to send verification email:', error.message || error);
+                throw error;
+        }
 };
 
 const sendPasswordResetOtpEmail = async (to, name, otp) => {
+        const safeName = escapeHtml(name);
+        const safeOtp = escapeHtml(otp);
         const html = buildEmailTemplate({
-                title: 'Your password reset code',
+                title: 'Your Password Reset Code',
                 preheader: 'Use this OTP to reset your Vocafit password.',
                 bodyHtml: `
-                        <p>Hi ${name},</p>
+                        <p>Hi ${safeName},</p>
                         <p>Your password reset OTP is:</p>
-                        <p style="font-size:20px;font-weight:700;letter-spacing:2px;color:#0f172a;">${otp}</p>
+                        <p style="font-size:20px;font-weight:700;letter-spacing:2px;color:#0f172a;">${safeOtp}</p>
                         <p>This code expires in 30 minutes. If you did not request this, you can ignore this email.</p>
                 `,
         });
 
-        await transporter.sendMail({
-                from: EMAIL_FROM,
-                to,
-                subject: 'Your Vocafit password reset OTP',
-                html,
-                text: `Hi ${name},\n\nYour password reset OTP is ${otp}.\nThis code expires in 30 minutes. If you did not request this, ignore this email.\n`,
-        });
+        try {
+                await transporter.sendMail({
+                        from: EMAIL_FROM,
+                        to,
+                        subject: 'Your Vocafit Password Reset OTP',
+                        html,
+                        text: `Hi ${name},\n\nYour password reset OTP is ${otp}.\nThis code expires in 30 minutes. If you did not request this, ignore this email.\n`,
+                });
+        } catch (error) {
+                console.error('Failed to send password reset OTP email:', error.message || error);
+                throw error;
+        }
 };
 
 const sendOrderInvoiceEmail = async ({ to, name, orderId, paymentMethod, amount, penaltyAmount, itemName, expireAt, paymentUrl }) => {
-        const totalAmount = Number(amount || 0);
+        const totalAmount = Number(amount || 0) + Number(penaltyAmount || 0);
         const penaltyValue = Number(penaltyAmount || 0);
         const paymentMethodLabel = paymentMethod === 'QRIS' ? 'QRIS' : 'Cash';
     let pdfBuffer = null;
@@ -180,24 +213,28 @@ const sendOrderInvoiceEmail = async ({ to, name, orderId, paymentMethod, amount,
         console.error('Failed to generate invoice PDF:', error.message || error);
     }
 
+        const safeName = escapeHtml(name);
+        const safeOrderId = escapeHtml(orderId);
+        const safeItemName = escapeHtml(itemName);
+
     const invoiceFileName = `invoice_${toSafeFileName(orderId)}.pdf`;
         const html = buildEmailTemplate({
-                title: 'Your Vocafit order invoice',
+                title: 'Your Vocafit Order Invoice',
                 preheader: `Invoice for order ${orderId}.`,
                 bodyHtml: `
-                        <p>Hi ${name},</p>
+                        <p>Hi ${safeName},</p>
                         <p>Thanks for your order. Here is your invoice summary:</p>
                         <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-top:12px;border-collapse:collapse;">
                             <tr>
                                 <td style="padding:8px 0;border-bottom:1px solid #eef1f6;">Order ID</td>
-                                <td style="padding:8px 0;border-bottom:1px solid #eef1f6;text-align:right;">${orderId}</td>
+                                <td style="padding:8px 0;border-bottom:1px solid #eef1f6;text-align:right;">${safeOrderId}</td>
                             </tr>
                             <tr>
                                 <td style="padding:8px 0;border-bottom:1px solid #eef1f6;">Item</td>
-                                <td style="padding:8px 0;border-bottom:1px solid #eef1f6;text-align:right;">${itemName}</td>
+                                <td style="padding:8px 0;border-bottom:1px solid #eef1f6;text-align:right;">${safeItemName}</td>
                             </tr>
                             <tr>
-                                <td style="padding:8px 0;border-bottom:1px solid #eef1f6;">Payment method</td>
+                                <td style="padding:8px 0;border-bottom:1px solid #eef1f6;">Payment Method</td>
                                 <td style="padding:8px 0;border-bottom:1px solid #eef1f6;text-align:right;">${paymentMethodLabel}</td>
                             </tr>
                             <tr>
@@ -209,28 +246,34 @@ const sendOrderInvoiceEmail = async ({ to, name, orderId, paymentMethod, amount,
                                 <td style="padding:8px 0;text-align:right;font-weight:600;">${formatCurrency(totalAmount)}</td>
                             </tr>
                         </table>
-                        <p style="margin-top:16px;">Invoice created at ${formatDateTime(new Date())}. ${expireAt ? `Please complete payment before ${formatDateTime(expireAt)}.` : ''}</p>
+                        <p style="margin-top:4px;font-size:11px;color:#8892b0;">Amounts shown are exclusive of applicable taxes.</p>
+                        <p style="margin-top:12px;">Invoice created on ${formatDateTime(new Date())}.${expireAt ? ` Please complete payment before ${formatDateTime(expireAt)}.` : ''}</p>
                         ${paymentUrl ? `<p style="margin-top:8px;">Use the button below to complete your payment.</p>` : ''}
                 `,
                 cta: paymentUrl ? { href: paymentUrl, label: 'Pay Now' } : null,
         });
 
-        await transporter.sendMail({
-                from: EMAIL_FROM,
-                to,
-                subject: `Invoice for order ${orderId}`,
-                html,
-                text: `Hi ${name},\n\nInvoice for order ${orderId}\nItem: ${itemName}\nPayment method: ${paymentMethodLabel}\nPenalty: ${formatCurrency(penaltyValue)}\nTotal: ${formatCurrency(totalAmount)}\n${expireAt ? `Pay before: ${formatDateTime(expireAt)}\n` : ''}${paymentUrl ? `Payment link: ${paymentUrl}\n` : ''}`,
-            attachments: pdfBuffer ? [{
-                filename: invoiceFileName,
-                content: pdfBuffer,
-                contentType: 'application/pdf',
-            }] : [],
-        });
+        try {
+                await transporter.sendMail({
+                        from: EMAIL_FROM,
+                        to,
+                        subject: `Invoice for Order ${orderId}`,
+                        html,
+                        text: `Hi ${name},\n\nInvoice for order ${orderId}\nItem: ${itemName}\nPayment Method: ${paymentMethodLabel}\nPenalty: ${formatCurrency(penaltyValue)}\nTotal: ${formatCurrency(totalAmount)}\n${expireAt ? `Pay before: ${formatDateTime(expireAt)}\n` : ''}${paymentUrl ? `Payment link: ${paymentUrl}\n` : ''}`,
+                    attachments: pdfBuffer ? [{
+                        filename: invoiceFileName,
+                        content: pdfBuffer,
+                        contentType: 'application/pdf',
+                    }] : [],
+                });
+        } catch (error) {
+                console.error('Failed to send order invoice email:', error.message || error);
+                throw error;
+        }
 };
 
 const sendPaymentReceiptEmail = async ({ to, name, orderId, paymentMethod, amount, penaltyAmount, itemName, paidAt }) => {
-        const totalAmount = Number(amount || 0);
+        const totalAmount = Number(amount || 0) + Number(penaltyAmount || 0);
         const penaltyValue = Number(penaltyAmount || 0);
         const paymentMethodLabel = paymentMethod === 'QRIS' ? 'QRIS' : 'Cash';
     let pdfBuffer = null;
@@ -249,24 +292,28 @@ const sendPaymentReceiptEmail = async ({ to, name, orderId, paymentMethod, amoun
         console.error('Failed to generate receipt PDF:', error.message || error);
     }
 
+        const safeName = escapeHtml(name);
+        const safeOrderId = escapeHtml(orderId);
+        const safeItemName = escapeHtml(itemName);
+
     const receiptFileName = `receipt_${toSafeFileName(orderId)}.pdf`;
         const html = buildEmailTemplate({
-                title: 'Your Vocafit payment receipt',
+                title: 'Your Vocafit Payment Receipt',
                 preheader: `Payment received for order ${orderId}.`,
                 bodyHtml: `
-                        <p>Hi ${name},</p>
+                        <p>Hi ${safeName},</p>
                         <p>We received your payment. Here is your receipt:</p>
                         <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-top:12px;border-collapse:collapse;">
                             <tr>
                                 <td style="padding:8px 0;border-bottom:1px solid #eef1f6;">Order ID</td>
-                                <td style="padding:8px 0;border-bottom:1px solid #eef1f6;text-align:right;">${orderId}</td>
+                                <td style="padding:8px 0;border-bottom:1px solid #eef1f6;text-align:right;">${safeOrderId}</td>
                             </tr>
                             <tr>
                                 <td style="padding:8px 0;border-bottom:1px solid #eef1f6;">Item</td>
-                                <td style="padding:8px 0;border-bottom:1px solid #eef1f6;text-align:right;">${itemName}</td>
+                                <td style="padding:8px 0;border-bottom:1px solid #eef1f6;text-align:right;">${safeItemName}</td>
                             </tr>
                             <tr>
-                                <td style="padding:8px 0;border-bottom:1px solid #eef1f6;">Payment method</td>
+                                <td style="padding:8px 0;border-bottom:1px solid #eef1f6;">Payment Method</td>
                                 <td style="padding:8px 0;border-bottom:1px solid #eef1f6;text-align:right;">${paymentMethodLabel}</td>
                             </tr>
                             <tr>
@@ -274,36 +321,33 @@ const sendPaymentReceiptEmail = async ({ to, name, orderId, paymentMethod, amoun
                                 <td style="padding:8px 0;border-bottom:1px solid #eef1f6;text-align:right;">${formatCurrency(penaltyValue)}</td>
                             </tr>
                             <tr>
-                                <td style="padding:8px 0;font-weight:600;">Total paid</td>
+                                <td style="padding:8px 0;font-weight:600;">Total Paid</td>
                                 <td style="padding:8px 0;text-align:right;font-weight:600;">${formatCurrency(totalAmount)}</td>
                             </tr>
                         </table>
-                        <p style="margin-top:16px;">Paid at ${formatDateTime(paidAt || new Date())}.</p>
+                        <p style="margin-top:4px;font-size:11px;color:#8892b0;">Amounts shown are exclusive of applicable taxes.</p>
+                        <p style="margin-top:12px;">Paid on ${formatDateTime(paidAt || new Date())}.</p>
                 `,
         });
 
-        await transporter.sendMail({
-                from: EMAIL_FROM,
-                to,
-                subject: `Receipt for order ${orderId}`,
-                html,
-                text: `Hi ${name},\n\nReceipt for order ${orderId}\nItem: ${itemName}\nPayment method: ${paymentMethodLabel}\nPenalty: ${formatCurrency(penaltyValue)}\nTotal paid: ${formatCurrency(totalAmount)}\nPaid at: ${formatDateTime(paidAt || new Date())}\n`,
-            attachments: pdfBuffer ? [{
-                filename: receiptFileName,
-                content: pdfBuffer,
-                contentType: 'application/pdf',
-            }] : [],
-        });
+        try {
+                await transporter.sendMail({
+                        from: EMAIL_FROM,
+                        to,
+                        subject: `Receipt for Order ${orderId}`,
+                        html,
+                        text: `Hi ${name},\n\nReceipt for order ${orderId}\nItem: ${itemName}\nPayment Method: ${paymentMethodLabel}\nPenalty: ${formatCurrency(penaltyValue)}\nTotal Paid: ${formatCurrency(totalAmount)}\nPaid on: ${formatDateTime(paidAt || new Date())}\n`,
+                    attachments: pdfBuffer ? [{
+                        filename: receiptFileName,
+                        content: pdfBuffer,
+                        contentType: 'application/pdf',
+                    }] : [],
+                });
+        } catch (error) {
+                console.error('Failed to send payment receipt email:', error.message || error);
+                throw error;
+        }
 };
-
-module.exports = {
-        sendVerificationEmail,
-        sendPasswordResetOtpEmail,
-        sendOrderInvoiceEmail,
-        sendPaymentReceiptEmail,
-};
-
-const toSafeFileName = (value) => String(value || '').replace(/[^a-z0-9_-]+/gi, '_');
 
 const createPdfBuffer = (renderFn) => new Promise((resolve, reject) => {
     const doc = new PDFDocument({ size: 'A4', margin: 50 });
@@ -396,6 +440,7 @@ const buildInvoicePdf = async ({
     expireAt,
     paymentUrl,
 }) => createPdfBuffer(async (doc) => {
+    const totalAmount = Number(amount || 0) + Number(penaltyAmount || 0);
     const headerY = await renderPdfHeader(doc, 'Invoice');
     const leftX = doc.page.margins.left;
     const rightX = doc.page.width - doc.page.margins.right - 220;
@@ -431,15 +476,16 @@ const buildInvoicePdf = async ({
         .fontSize(11)
         .fillColor('#0f172a')
         .text('Total', summaryStartX, summaryY, { width: summaryWidth * 0.6 })
-        .text(formatCurrency(amount), summaryStartX + summaryWidth * 0.6, summaryY, {
+        .text(formatCurrency(totalAmount), summaryStartX + summaryWidth * 0.6, summaryY, {
             width: summaryWidth * 0.4,
             align: 'right',
         });
 
-    doc.moveDown(1.2);
+    doc.moveDown(0.4);
+    doc.fontSize(8).fillColor('#8892b0').text('Amounts shown are exclusive of applicable taxes.');
 
     doc.moveDown(1.2);
-    doc.fontSize(9).fillColor('#475569').text('Payment link', { continued: false });
+    doc.fontSize(9).fillColor('#475569').text('Payment Link', { continued: false });
     if (paymentUrl) {
         doc.fontSize(9).fillColor('#0D0E85').text(paymentUrl, { link: paymentUrl, underline: true });
     } else {
@@ -459,6 +505,7 @@ const buildReceiptPdf = async ({
     itemName,
     paidAt,
 }) => createPdfBuffer(async (doc) => {
+    const totalAmount = Number(amount || 0) + Number(penaltyAmount || 0);
     const headerY = await renderPdfHeader(doc, 'Receipt');
     const leftX = doc.page.margins.left;
     const rightX = doc.page.width - doc.page.margins.right - 220;
@@ -469,7 +516,7 @@ const buildReceiptPdf = async ({
 
     doc.fontSize(10).fillColor('#475569').text('Order ID', rightX, headerY, { width: metaWidth, align: 'right' });
     doc.fontSize(10).fillColor('#0f172a').text(orderId, rightX, doc.y + 2, { width: metaWidth, align: 'right' });
-    doc.fontSize(10).fillColor('#475569').text('Paid At', rightX, doc.y + 10, { width: metaWidth, align: 'right' });
+    doc.fontSize(10).fillColor('#475569').text('Paid On', rightX, doc.y + 10, { width: metaWidth, align: 'right' });
     doc.fontSize(10).fillColor('#0f172a').text(formatDateTime(paidAt || new Date()), rightX, doc.y + 2, { width: metaWidth, align: 'right' });
     doc.fontSize(10).fillColor('#475569').text('Payment Method', rightX, doc.y + 10, { width: metaWidth, align: 'right' });
     doc.fontSize(10).fillColor('#0f172a').text(paymentMethod === 'QRIS' ? 'QRIS' : 'Cash', rightX, doc.y + 2, { width: metaWidth, align: 'right' });
@@ -489,14 +536,22 @@ const buildReceiptPdf = async ({
     doc
         .fontSize(11)
         .fillColor('#0f172a')
-        .text('Total paid', summaryStartX, summaryY, { width: summaryWidth * 0.6 })
-        .text(formatCurrency(amount), summaryStartX + summaryWidth * 0.6, summaryY, {
+        .text('Total Paid', summaryStartX, summaryY, { width: summaryWidth * 0.6 })
+        .text(formatCurrency(totalAmount), summaryStartX + summaryWidth * 0.6, summaryY, {
             width: summaryWidth * 0.4,
             align: 'right',
         });
 
-    doc.moveDown(1.2);
+    doc.moveDown(0.4);
+    doc.fontSize(8).fillColor('#8892b0').text('Amounts shown are exclusive of applicable taxes.');
 
     doc.moveDown(1.2);
     doc.fontSize(9).fillColor('#5a658f').text(`Support: ${SUPPORT_EMAIL}`);
 });
+
+module.exports = {
+        sendVerificationEmail,
+        sendPasswordResetOtpEmail,
+        sendOrderInvoiceEmail,
+        sendPaymentReceiptEmail,
+};
