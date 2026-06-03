@@ -1,5 +1,5 @@
 const cron = require('node-cron');
-const trainerPackageRepository = require('../modules/trainers/trainer.package.repository');
+const trainerPackageRepository = require('../modules/trainers/trainer.repository');
 
 const initTrainerPackageCronJobs = () => {
     cron.schedule('*/3 * * * *', async () => {
