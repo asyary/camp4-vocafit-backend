@@ -17,6 +17,10 @@ const createServiceError = (message, status, data = null) => {
     return error;
 };
 
+const runInTransaction = async (callback) => {
+    return await db.withTransaction(callback);
+};
+
 const createTrainer = async (data, executor = db) => {
     const { name, email, phoneNumber, bio, specialties, imageUrl } = data;
     const { rows } = await executor.query(
@@ -240,6 +244,116 @@ const getSessionById = async (sessionId, executor = db) => {
     return rows[0];
 };
 
+const getPackageForUpdate = async (client, packageId) => {
+    const { rows } = await client.query(
+        `SELECT tp.*,
+                c.session_count,
+                c.group_size
+         FROM trainer_packages tp
+         JOIN pricing_catalog c ON c.code = tp.catalog_code
+         WHERE tp.id = $1
+         FOR UPDATE`,
+        [packageId]
+    );
+    return rows[0];
+};
+
+const getSessionWithPackageForUpdate = async (client, sessionId) => {
+    const { rows } = await client.query(
+        `SELECT ts.*,
+                tp.status AS package_status,
+                tp.expires_at,
+                tp.session_remaining,
+                tp.session_total,
+                tp.trainer_id AS package_trainer_id
+         FROM trainer_sessions ts
+         JOIN trainer_packages tp ON tp.id = ts.package_id
+         WHERE ts.id = $1
+         FOR UPDATE`,
+        [sessionId]
+    );
+    return rows[0];
+};
+
+const isConfirmedPackageMember = async (packageId, userId, executor = db) => {
+    const { rows } = await executor.query(
+        `SELECT 1
+         FROM trainer_package_members
+         WHERE package_id = $1
+           AND user_id = $2
+           AND status = 'CONFIRMED'
+         LIMIT 1`,
+        [packageId, userId]
+    );
+    return rows.length > 0;
+};
+
+const canMemberCancelSession = async (sessionId, executor = db) => {
+    const { rows } = await executor.query(
+        `SELECT timezone('Asia/Jakarta', NOW())::date <= (timezone('Asia/Jakarta', start_time)::date - 2) AS can_cancel
+         FROM trainer_sessions
+         WHERE id = $1`,
+        [sessionId]
+    );
+    return rows[0]?.can_cancel ?? false;
+};
+
+const insertSession = async (client, { packageId, trainerId, bookedByUserId, startTime, endTime }) => {
+    const { rows } = await client.query(
+        `INSERT INTO trainer_sessions (
+            package_id, trainer_id, booked_by_user_id, start_time, end_time
+        ) VALUES ($1, $2, $3, $4, $5)
+        RETURNING *`,
+        [packageId, trainerId, bookedByUserId, startTime, endTime]
+    );
+    return rows[0];
+};
+
+const markSessionCancelled = async (client, sessionId, { canceledByUserId, canceledByRole, cancelReason }) => {
+    const { rows } = await client.query(
+        `UPDATE trainer_sessions
+         SET status = 'CANCELLED',
+             canceled_by_user_id = $2,
+             canceled_by_role = $3,
+             canceled_at = NOW(),
+             cancel_reason = $4,
+             updated_at = NOW()
+         WHERE id = $1
+         RETURNING *`,
+        [sessionId, canceledByUserId, canceledByRole, cancelReason || null]
+    );
+    return rows[0];
+};
+
+const updatePackageAfterSessionChange = async (client, packageId, delta) => {
+    const { rows } = await client.query(
+        `UPDATE trainer_packages
+         SET session_remaining = session_remaining + $2,
+             status = CASE
+                 WHEN session_remaining + $2 <= 0 THEN 'EXHAUSTED'
+                 ELSE 'ACTIVE'
+             END,
+             updated_at = NOW()
+         WHERE id = $1
+         RETURNING *`,
+        [packageId, delta]
+    );
+    return rows[0];
+};
+
+const restorePackageSession = async (client, packageId) => {
+    const { rows } = await client.query(
+        `UPDATE trainer_packages
+         SET session_remaining = session_remaining + 1,
+             status = 'ACTIVE',
+             updated_at = NOW()
+         WHERE id = $1
+         RETURNING *`,
+        [packageId]
+    );
+    return rows[0];
+};
+
 const createTrainerPackageFromTransaction = async (client, transaction) => {
     const { rows: catalogRows } = await client.query(
         `SELECT code, group_size, session_count
@@ -351,225 +465,6 @@ const createTrainerPackageFromTransaction = async (client, transaction) => {
     return createdPackage;
 };
 
-const createTrainerSession = async (client, sessionData) => {
-    const { packageId, trainerId, bookedByUserId, startTime, endTime } = sessionData;
-    const { rows } = await client.query(
-        `INSERT INTO trainer_sessions (
-            package_id,
-            trainer_id,
-            booked_by_user_id,
-            start_time,
-            end_time
-        ) VALUES ($1, $2, $3, $4, $5)
-        RETURNING *`,
-        [packageId, trainerId, bookedByUserId, startTime, endTime]
-    );
-    return rows[0];
-};
-
-const updatePackageAfterSessionChange = async (client, packageId, delta) => {
-    const { rows } = await client.query(
-        `UPDATE trainer_packages
-         SET session_remaining = session_remaining + $2,
-             status = CASE
-                 WHEN session_remaining + $2 <= 0 THEN 'EXHAUSTED'
-                 ELSE 'ACTIVE'
-             END,
-             updated_at = NOW()
-         WHERE id = $1
-         RETURNING *`,
-        [packageId, delta]
-    );
-    return rows[0];
-};
-
-const bookPackageSession = async (client, { packageId, userId, startTime }) => {
-    const { rows: packageRows } = await client.query(
-        `SELECT tp.*,
-                c.session_count,
-                c.group_size
-         FROM trainer_packages tp
-         JOIN pricing_catalog c ON c.code = tp.catalog_code
-         WHERE tp.id = $1
-         FOR UPDATE`,
-        [packageId]
-    );
-
-    const packageRow = packageRows[0];
-    if (!packageRow) {
-        throw createServiceError('Trainer package not found', 404);
-    }
-
-    if (packageRow.status !== 'ACTIVE') {
-        throw createServiceError('Trainer package is not active', 409);
-    }
-
-    if (new Date(packageRow.expires_at).getTime() <= Date.now()) {
-        throw createServiceError('Trainer package has expired', 409);
-    }
-
-    if (Number(packageRow.session_remaining) <= 0) {
-        throw createServiceError('Trainer package has no remaining sessions', 409);
-    }
-
-    const { rows: memberRows } = await client.query(
-        `SELECT 1
-         FROM trainer_package_members
-         WHERE package_id = $1
-           AND user_id = $2
-           AND status = 'CONFIRMED'
-         LIMIT 1`,
-        [packageId, userId]
-    );
-
-    if (memberRows.length === 0) {
-        throw createServiceError('You are not a member of this trainer package', 403);
-    }
-
-    const sessionStart = new Date(startTime);
-    if (Number.isNaN(sessionStart.getTime())) {
-        throw createServiceError('Invalid session start time', 400);
-    }
-
-    const sessionEnd = new Date(sessionStart.getTime() + 2 * 60 * 60 * 1000);
-    if (sessionStart.getTime() <= Date.now()) {
-        throw createServiceError('Trainer sessions must be booked for a future time', 400);
-    }
-
-    if (sessionEnd.getTime() > new Date(packageRow.expires_at).getTime()) {
-        throw createServiceError('Session must end before the package expires', 409);
-    }
-
-    const minutes = sessionStart.getMinutes();
-    if (![0, 30].includes(minutes)) {
-        throw createServiceError('Trainer sessions must start on 30-minute intervals', 400);
-    }
-
-    const { rows: sessionRows } = await client.query(
-        `INSERT INTO trainer_sessions (
-            package_id,
-            trainer_id,
-            booked_by_user_id,
-            start_time,
-            end_time
-        ) VALUES ($1, $2, $3, $4, $5)
-        RETURNING *`,
-        [packageId, packageRow.trainer_id, userId, sessionStart, sessionEnd]
-    );
-
-    const bookedSession = sessionRows[0];
-
-    const remainingAfterBooking = Number(packageRow.session_remaining) - 1;
-    const { rows: updatedPackageRows } = await client.query(
-        `UPDATE trainer_packages
-         SET session_remaining = $2,
-             status = CASE WHEN $2 = 0 THEN 'EXHAUSTED' ELSE 'ACTIVE' END,
-             updated_at = NOW()
-         WHERE id = $1
-         RETURNING *`,
-        [packageId, remainingAfterBooking]
-    );
-
-    return {
-        session: bookedSession,
-        package: updatedPackageRows[0]
-    };
-};
-
-const cancelPackageSession = async (client, { sessionId, userId, role, cancelReason }) => {
-    const { rows: sessionRows } = await client.query(
-        `SELECT ts.*,
-                tp.status AS package_status,
-                tp.expires_at,
-                tp.session_remaining,
-                tp.session_total,
-                tp.trainer_id AS package_trainer_id
-         FROM trainer_sessions ts
-         JOIN trainer_packages tp ON tp.id = ts.package_id
-         WHERE ts.id = $1
-         FOR UPDATE`,
-        [sessionId]
-    );
-
-    const session = sessionRows[0];
-    if (!session) {
-        throw createServiceError('Trainer session not found', 404);
-    }
-
-    if (session.status !== 'BOOKED') {
-        throw createServiceError('Only booked sessions can be cancelled', 409);
-    }
-
-    if (session.package_status === 'CANCELED' || session.package_status === 'EXPIRED') {
-        throw createServiceError('Trainer package is no longer active', 409);
-    }
-
-    const now = new Date();
-    const sessionStart = new Date(session.start_time);
-
-    // No one can cancel a session whose time has already been reached
-    if (sessionStart.getTime() <= now.getTime()) {
-        throw createServiceError('Session time has already been reached', 409);
-    }
-
-    if (role !== 'pengurus') {
-        // Members can only cancel until D-2 (2 days before session date)
-        const { rows: allowedRows } = await client.query(
-            `SELECT timezone('Asia/Jakarta', NOW())::date <= (timezone('Asia/Jakarta', start_time)::date - 2) AS can_cancel
-             FROM trainer_sessions
-             WHERE id = $1`,
-            [sessionId]
-        );
-
-        if (!allowedRows[0]?.can_cancel) {
-            throw createServiceError('Trainer sessions can only be cancelled until D-2 by members', 409);
-        }
-
-        // Verify the user is a confirmed member of this package
-        const { rows: memberRows } = await client.query(
-            `SELECT 1
-             FROM trainer_package_members
-             WHERE package_id = $1
-               AND user_id = $2
-               AND status = 'CONFIRMED'
-             LIMIT 1`,
-            [session.package_id, userId]
-        );
-
-        if (memberRows.length === 0) {
-            throw createServiceError('You are not allowed to cancel this trainer session', 403);
-        }
-    }
-
-    const { rows: updatedSessionRows } = await client.query(
-        `UPDATE trainer_sessions
-         SET status = 'CANCELLED',
-             canceled_by_user_id = $2,
-             canceled_by_role = $3,
-             canceled_at = NOW(),
-             cancel_reason = $4,
-             updated_at = NOW()
-         WHERE id = $1
-         RETURNING *`,
-        [sessionId, userId, role, cancelReason || null]
-    );
-
-    const { rows: updatedPackageRows } = await client.query(
-        `UPDATE trainer_packages
-         SET session_remaining = session_remaining + 1,
-             status = 'ACTIVE',
-             updated_at = NOW()
-         WHERE id = $1
-         RETURNING *`,
-        [session.package_id]
-    );
-
-    return {
-        session: updatedSessionRows[0],
-        package: updatedPackageRows[0]
-    };
-};
-
 const cancelTrainerPackageByTransactionId = async (client, transactionId) => {
     const { rows: packageRows } = await client.query(
         `SELECT id, status
@@ -582,12 +477,10 @@ const cancelTrainerPackageByTransactionId = async (client, transactionId) => {
     const packageRow = packageRows[0];
     if (!packageRow) return null;
 
-    // Already cancelled or expired — nothing to do
     if (packageRow.status === 'CANCELED' || packageRow.status === 'EXPIRED') {
         return packageRow;
     }
 
-    // Only cancel future BOOKED sessions (past/completed sessions are untouched)
     await client.query(
         `UPDATE trainer_sessions
          SET status = 'CANCELLED',
@@ -626,6 +519,7 @@ const expireTrainerPackages = async () => {
 
 module.exports = {
     normalizeEmailList,
+    runInTransaction,
     createTrainer,
     getAllTrainers,
     getTrainerById,
@@ -640,11 +534,15 @@ module.exports = {
     listPackagesByUserId,
     listSessionsByPackageId,
     getSessionById,
-    createTrainerPackageFromTransaction,
-    createTrainerSession,
+    getPackageForUpdate,
+    getSessionWithPackageForUpdate,
+    isConfirmedPackageMember,
+    canMemberCancelSession,
+    insertSession,
+    markSessionCancelled,
     updatePackageAfterSessionChange,
-    bookPackageSession,
-    cancelPackageSession,
+    restorePackageSession,
+    createTrainerPackageFromTransaction,
     cancelTrainerPackageByTransactionId,
     expireTrainerPackages,
 };
