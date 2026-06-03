@@ -8,6 +8,14 @@ const MIDTRANS_SUCCESS_STATUSES = new Set(['capture', 'settlement']);
 const MIDTRANS_FAILURE_STATUSES = new Set(['deny', 'expire', 'cancel']);
 const MIDTRANS_REVERSAL_STATUSES = new Set(['refund', 'partial_refund', 'chargeback']);
 
+const normalizeEmailList = (emails = []) => Array.from(
+    new Set(
+        (Array.isArray(emails) ? emails : [])
+            .map((email) => String(email || '').trim().toLowerCase())
+            .filter(Boolean)
+    )
+);
+
 const createPayment = async (userId, payload) => {
     const user = await repository.getUserForTransaction(userId);
     if (!user) throw new Error('User not found');
@@ -23,6 +31,68 @@ const createPayment = async (userId, payload) => {
     const catalogItem = await repository.getPricingCatalogItem(payload.transactionType);
     if (!catalogItem) {
         throw new Error('Pricing option not found');
+    }
+
+    let trainerId = null;
+    let trainerParticipantEmails = [];
+
+    if (catalogItem.family === 'PERSONAL_TRAINER') {
+        if (!payload.trainerId) {
+            const err = new Error('Trainer selection is required for personal trainer packages');
+            err.status = 400;
+            throw err;
+        }
+
+        trainerId = payload.trainerId;
+        const trainer = await repository.getTrainerById(trainerId);
+        if (!trainer) {
+            const err = new Error('Trainer not found or inactive');
+            err.status = 404;
+            throw err;
+        }
+
+        if (!await repository.hasActiveMembership(userId)) {
+            const err = new Error('Active membership required for trainer packages');
+            err.status = 403;
+            throw err;
+        }
+
+        trainerParticipantEmails = normalizeEmailList([
+            user.email,
+            ...(Array.isArray(payload.participantEmails) ? payload.participantEmails : [])
+        ]);
+
+        if (trainerParticipantEmails.length !== Number(catalogItem.group_size)) {
+            const err = new Error('Participant count does not match the selected trainer package');
+            err.status = 400;
+            throw err;
+        }
+
+        const participants = await repository.getUsersByEmails(trainerParticipantEmails);
+        if (participants.length !== trainerParticipantEmails.length) {
+            const foundEmails = new Set(participants.map((participant) => participant.email));
+            const missingEmails = trainerParticipantEmails.filter((email) => !foundEmails.has(email));
+            const err = new Error('Some participant emails are invalid or unregistered');
+            err.status = 400;
+            err.data = { missingEmails };
+            throw err;
+        }
+
+        const invalidParticipants = participants.filter((participant) => !participant.is_verified || !participant.has_active_membership);
+        if (invalidParticipants.length > 0) {
+            const err = new Error('All participants must have an active membership');
+            err.status = 403;
+            err.data = { invalidEmails: invalidParticipants.map((participant) => participant.email) };
+            throw err;
+        }
+
+        const conflicts = await repository.getActiveTrainerPackageConflicts(participants.map((participant) => participant.id));
+        if (conflicts.length > 0) {
+            const err = new Error('One or more participants already have an active trainer package');
+            err.status = 409;
+            err.data = { conflicts: conflicts.map((conflict) => conflict.email) };
+            throw err;
+        }
     }
 
     const accountTierCode = user.membership_price_code || 'UMUM';
@@ -92,7 +162,10 @@ const createPayment = async (userId, payload) => {
         expireAt,
         paymentUrl,
         snapToken,
-        penaltyAmount
+        penaltyAmount,
+        trainerId,
+        trainerParticipantEmails,
+        trainerGroupSize: catalogItem.group_size || null
     });
 
     try {

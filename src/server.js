@@ -20,6 +20,7 @@ const userRoutes = require('./modules/users/user.routes');
 const { initCronJobs } = require('./cron/penalty.cron');
 const { initAuthCronJobs } = require('./cron/auth.cron');
 const { initTransactionCronJobs } = require('./cron/transaction.cron');
+const { initTrainerPackageCronJobs } = require('./cron/trainer_package.cron');
 const responseHandler = require('./middlewares/response.middleware');
 const { initSocket } = require('./config/socket');
 const { startEmailQueueWorker } = require('./utils/email-queue.util');
@@ -32,6 +33,7 @@ app.use(responseHandler);
 initCronJobs();
 initAuthCronJobs();
 initTransactionCronJobs();
+initTrainerPackageCronJobs();
 startEmailQueueWorker().catch((error) => {
     console.error('Failed to start email queue worker', error);
 });
