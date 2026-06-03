@@ -1,7 +1,7 @@
 // Berhati-hatilah bekerja disini hai kawand
 const db = require('../../config/db');
 const { getCachedCatalogPrice } = require('../../utils/pricing-cache.util');
-const trainerPackageRepository = require('../trainers/trainer.package.repository');
+const trainerPackageRepository = require('../trainers/trainer.repository');
 
 const TRANSACTION_SELECT_FIELDS = `
     t.id,
