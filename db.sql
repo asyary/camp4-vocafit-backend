@@ -191,14 +191,6 @@ ALTER TABLE transactions
     ADD CONSTRAINT fk_transactions_trainer
     FOREIGN KEY (trainer_id) REFERENCES trainers(id) ON DELETE SET NULL;
 
-CREATE TABLE trainer_schedules (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    trainer_id UUID REFERENCES trainers(id) ON DELETE CASCADE,
-    start_time TIMESTAMP WITH TIME ZONE NOT NULL,
-    end_time TIMESTAMP WITH TIME ZONE NOT NULL,
-    is_booked BOOLEAN DEFAULT FALSE
-);
-
 CREATE TABLE trainer_packages (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     transaction_id UUID UNIQUE REFERENCES transactions(id) ON DELETE SET NULL,
