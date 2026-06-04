@@ -24,14 +24,15 @@ const verifyEmail = async (req, res, next) => {
 			return next(err);
 		};
         
-        const verified = await authService.verifyUser(token);
-        if (!verified) {
+        const result = await authService.verifyUser(token);
+        if (!result) {
 			const err = new Error('Invalid or expired token');
 			err.status = 404;
 			return next(err);
 		};
 
-        res.success(null, 'Email verified successfully. You can now login.');
+        setTokens(res, result.accessToken, result.refreshToken);
+        res.success(result.user, 'Email verified and logged in successfully.');
     } catch (err) {
         next(err);
     }

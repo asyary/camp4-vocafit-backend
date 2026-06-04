@@ -208,7 +208,20 @@ const verifyUser = async (token) => {
     });
 
     if (!verifiedUser) return null;
-    return verifiedUser;
+
+    const accessToken = generateAccessToken(verifiedUser.id, verifiedUser.role);
+    const refreshToken = generateRefreshToken(verifiedUser.id);
+
+    return {
+        accessToken,
+        refreshToken,
+        user: {
+            id: verifiedUser.id,
+            name: verifiedUser.full_name,
+            role: verifiedUser.role,
+            tier: verifiedUser.tier,
+        },
+    };
 };
 
 const requestPasswordReset = async (email) => {
