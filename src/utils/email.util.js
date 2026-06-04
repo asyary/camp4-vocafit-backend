@@ -78,10 +78,21 @@ const formatCurrency = (amount) => {
 };
 
 const formatDateTime = (value) => {
-        if (!value) return '-';
-        const date = value instanceof Date ? value : new Date(value);
-        if (Number.isNaN(date.getTime())) return '-';
-        return date.toLocaleString('id-ID');
+    if (!value) return '-';
+    const date = value instanceof Date ? value : new Date(value);
+    if (Number.isNaN(date.getTime())) return '-';
+
+    const formattedString = date.toLocaleString('en-GB', {
+        timeZone: 'Asia/Jakarta',
+        day: 'numeric',
+        month: 'long',
+        year: 'numeric',
+        hour: '2-digit', 
+        minute: '2-digit',
+        timeZoneName: 'short'
+    });
+	
+    return formattedString.replace('GMT+7', 'WIB');
 };
 
 const buildEmailTemplate = ({ title, preheader, bodyHtml, cta }) => `
@@ -217,7 +228,7 @@ const sendOrderInvoiceEmail = async ({ to, name, orderId, paymentMethod, amount,
         const safeOrderId = escapeHtml(orderId);
         const safeItemName = escapeHtml(itemName);
 
-    const invoiceFileName = `invoice_${toSafeFileName(orderId)}.pdf`;
+    const invoiceFileName = `Invoice_${toSafeFileName(orderId)}.pdf`;
         const html = buildEmailTemplate({
                 title: 'Your Vocafit Order Invoice',
                 preheader: `Invoice for order ${orderId}.`,
@@ -296,7 +307,7 @@ const sendPaymentReceiptEmail = async ({ to, name, orderId, paymentMethod, amoun
         const safeOrderId = escapeHtml(orderId);
         const safeItemName = escapeHtml(itemName);
 
-    const receiptFileName = `receipt_${toSafeFileName(orderId)}.pdf`;
+    const receiptFileName = `Receipt_${toSafeFileName(orderId)}.pdf`;
         const html = buildEmailTemplate({
                 title: 'Your Vocafit Payment Receipt',
                 preheader: `Payment received for order ${orderId}.`,
