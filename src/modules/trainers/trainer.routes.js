@@ -7,19 +7,17 @@ const router = express.Router();
 
 // Public
 router.get('/', controller.getTrainers);
-router.get('/:trainerId', controller.getTrainerById);
-
-router.use(requireAuth);
 
 // Member trainer package flow
-router.get('/packages', requireMembership, controller.getMyPackages);
-router.get('/packages/:packageId', requireMembership, controller.getPackageDetails);
-router.post('/packages/:packageId/sessions', requireMembership, controller.bookSession);
-router.post('/sessions/:sessionId/cancel', controller.cancelSession);
+router.get('/packages', requireAuth, requireMembership, controller.getMyPackages);
+router.get('/packages/:packageId', requireAuth, requireMembership, controller.getPackageDetails);
+router.post('/packages/:packageId/sessions', requireAuth, requireMembership, controller.bookSession);
+router.post('/sessions/:sessionId/cancel', requireAuth, controller.cancelSession);
 
 // Admin trainer CRUD
-router.post('/', requireRole('pengurus'), upload.single('image'), controller.createTrainer);
-router.put('/:trainerId', requireRole('pengurus'), upload.single('image'), controller.updateTrainer);
-router.delete('/:trainerId', requireRole('pengurus'), controller.deactivateTrainer);
+router.get('/:trainerId', controller.getTrainerById);
+router.post('/', requireAuth, requireRole('pengurus'), upload.single('image'), controller.createTrainer);
+router.put('/:trainerId', requireAuth, requireRole('pengurus'), upload.single('image'), controller.updateTrainer);
+router.delete('/:trainerId', requireAuth, requireRole('pengurus'), controller.deactivateTrainer);
 
 module.exports = router;
