@@ -17,10 +17,12 @@ const trainerRoutes = require('./modules/trainers/trainer.routes');
 const pengurusRoutes = require('./modules/pengurus/pengurus.routes');
 const activityRoutes = require('./modules/activities/activity.routes');
 const userRoutes = require('./modules/users/user.routes');
+const notificationRoutes = require('./modules/notifications/notifications.routes');
 const { initCronJobs } = require('./cron/penalty.cron');
 const { initAuthCronJobs } = require('./cron/auth.cron');
 const { initTransactionCronJobs } = require('./cron/transaction.cron');
 const { initTrainerPackageCronJobs } = require('./cron/trainer_package.cron');
+const { initNotificationCronJobs } = require('./cron/notification.cron');
 const responseHandler = require('./middlewares/response.middleware');
 const { initSocket } = require('./config/socket');
 const { startEmailQueueWorker } = require('./utils/email-queue.util');
@@ -34,6 +36,7 @@ initCronJobs();
 initAuthCronJobs();
 initTransactionCronJobs();
 initTrainerPackageCronJobs();
+initNotificationCronJobs();
 startEmailQueueWorker().catch((error) => {
     console.error('Failed to start email queue worker', error);
 });
@@ -62,6 +65,7 @@ app.use('/api/trainers', trainerRoutes);
 app.use('/api/admin', pengurusRoutes);
 app.use('/api/activities', activityRoutes);
 app.use('/api/users', userRoutes);
+app.use('/api/notifications', notificationRoutes);
 
 // WebSocket init
 initSocket(server);
