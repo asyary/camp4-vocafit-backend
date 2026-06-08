@@ -266,12 +266,18 @@ INSERT INTO trainers (name, email, phone_number, bio, specialties, image_url, is
     ('Sinta Kurnia', 'sinta.kurnia@vocafit.example', '+62-813-3333-333', 'Body recomposition specialist with nutrition coaching background.', 'Body recomposition, core training, nutrition basics', 'https://images.example.com/trainers/sinta-kurnia.jpg', TRUE),
     ('Dimas Hartono', 'dimas.hartono@vocafit.example', '+62-814-4444-444', 'Beginner-friendly trainer emphasizing form, consistency, and confidence.', 'Beginner programs, functional training', 'https://images.example.com/trainers/dimas-hartono.jpg', TRUE);
 
+CREATE TYPE gym_unit AS ENUM ('kg', 'm', 'km', 'l', 'sec', 'min', 'hr', 'reps', 'sets', 'cal', 'steps', 'other');
+
 -- To-Do / Activity Tracker for Members
 CREATE TABLE activities (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID REFERENCES users(id) ON DELETE CASCADE,
     task_name VARCHAR(255) NOT NULL,
     is_completed BOOLEAN DEFAULT FALSE,
+	note TEXT,
+	current_value NUMERIC(10, 2) DEFAULT 0,
+	target_value NUMERIC(10, 2) NOT NULL,
+	unit gym_unit NOT NULL,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
