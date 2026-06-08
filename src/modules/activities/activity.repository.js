@@ -1,9 +1,10 @@
 const db = require('../../config/db');
 
-const createActivity = async (userId, taskName) => {
+const createActivity = async (userId, data) => {
+    const { taskName, note, targetValue, unit } = data;
     const { rows } = await db.query(
-        'INSERT INTO activities (user_id, task_name) VALUES ($1, $2) RETURNING *',
-        [userId, taskName]
+        'INSERT INTO activities (user_id, task_name, note, target_value, unit) VALUES ($1, $2, $3, $4, $5) RETURNING *',
+        [userId, taskName, note, targetValue, unit]
     );
     return rows[0];
 };
@@ -33,16 +34,20 @@ const getActivityByIdAndUser = async (id, userId) => {
 };
 
 const updateActivity = async (id, userId, data) => {
-    const { taskName, isCompleted } = data;
+    const { taskName, isCompleted, note, currentValue, targetValue, unit } = data;
     
     // We use COALESCE to only update fields that are provided
     const { rows } = await db.query(
         `UPDATE activities 
          SET task_name = COALESCE($1, task_name), 
-             is_completed = COALESCE($2, is_completed)
-         WHERE id = $3 AND user_id = $4 
+             is_completed = COALESCE($2, is_completed),
+             note = COALESCE($3, note),
+             current_value = COALESCE($4, current_value),
+             target_value = COALESCE($5, target_value),
+             unit = COALESCE($6, unit)
+         WHERE id = $7 AND user_id = $8 
          RETURNING *`,
-        [taskName, isCompleted, id, userId]
+        [taskName, isCompleted, note, currentValue, targetValue, unit, id, userId]
     );
     return rows[0];
 };

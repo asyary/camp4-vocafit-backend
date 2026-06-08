@@ -1,7 +1,7 @@
 const repository = require('./activity.repository');
 
 const addActivity = async (userId, data) => {
-    return await repository.createActivity(userId, data.taskName);
+    return await repository.createActivity(userId, data);
 };
 
 const fetchActivities = async (userId, page, limit) => {
