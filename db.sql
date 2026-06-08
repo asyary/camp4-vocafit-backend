@@ -120,12 +120,12 @@ INSERT INTO pricing_account_tiers (code, name, description, sort_order) VALUES
     ('MAHASISWA_VOKASI', 'Mahasiswa Vokasi', 'Pengguna Unesa dengan status mahasiswa Fakultas Vokasi', 4);
 
 INSERT INTO pricing_catalog (code, family, name, description, group_size, session_count, duration_days, sort_order) VALUES
-    ('MEMBERSHIP_DAILY', 'MEMBERSHIP', 'Membership Daily', 'Akses membership harian', NULL, NULL, 1, 1),
-    ('MEMBERSHIP_MONTHLY', 'MEMBERSHIP', 'Membership Monthly', 'Akses membership bulanan', NULL, NULL, 30, 2),
-    ('PT_SESSION', 'PERSONAL_TRAINER', 'Personal Trainer Single', 'Personal trainer untuk 1 orang selama 10 sesi', 1, 10, NULL, 3),
-    ('GROUP_FITNESS_3', 'PERSONAL_TRAINER', 'Group Fitness 3 Pax', 'Personal trainer untuk 3 orang selama 10 sesi', 3, 10, NULL, 4),
-    ('GROUP_FITNESS_4', 'PERSONAL_TRAINER', 'Group Fitness 4 Pax', 'Personal trainer untuk 4 orang selama 10 sesi', 4, 10, NULL, 5),
-    ('GROUP_FITNESS_5', 'PERSONAL_TRAINER', 'Group Fitness 5 Pax', 'Personal trainer untuk 5 orang selama 10 sesi', 5, 10, NULL, 6);
+    ('MEMBERSHIP_DAILY', 'MEMBERSHIP', 'Membership Daily', 'Akses membership harian', NULL, NULL, 1, 0),
+    ('MEMBERSHIP_MONTHLY', 'MEMBERSHIP', 'Membership Monthly', 'Akses membership bulanan', NULL, NULL, 30, 1),
+    ('PT_SESSION', 'PERSONAL_TRAINER', 'Personal Trainer Single', 'Personal trainer untuk 1 orang selama 10 sesi', 1, 10, 30, 0),
+    ('GROUP_FITNESS_3', 'PERSONAL_TRAINER', 'Group Fitness 3 Pax', 'Personal trainer untuk 3 orang selama 10 sesi', 3, 10, 30, 1),
+    ('GROUP_FITNESS_4', 'PERSONAL_TRAINER', 'Group Fitness 4 Pax', 'Personal trainer untuk 4 orang selama 10 sesi', 4, 10, 30, 2),
+    ('GROUP_FITNESS_5', 'PERSONAL_TRAINER', 'Group Fitness 5 Pax', 'Personal trainer untuk 5 orang selama 10 sesi', 5, 10, 30, 3);
 
 INSERT INTO pricing_catalog_prices (catalog_code, account_tier_code, price) VALUES
     ('MEMBERSHIP_DAILY', 'UMUM', 15000),
@@ -273,3 +273,46 @@ CREATE TABLE activities (
     is_completed BOOLEAN DEFAULT FALSE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
+
+-- Notifications
+CREATE TABLE notifications (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    type VARCHAR(50) NOT NULL CHECK (type IN (
+        'MEMBERSHIP_EXPIRY_TOMORROW',
+        'MEMBERSHIP_EXPIRY_TODAY',
+        'SESSION_REMINDER',
+        'BROADCAST',
+        'TRANSACTION_CREATED',
+        'TRANSACTION_SUCCESS',
+        'TRANSACTION_FAILED'
+    )),
+    audience VARCHAR(50) NOT NULL DEFAULT 'SINGLE_USER' CHECK (audience IN (
+        'ALL',
+        'ACTIVE_MEMBERS',
+        'INACTIVE_MEMBERS',
+        'SINGLE_USER'
+    )),
+    title VARCHAR(255) NOT NULL,
+    message TEXT NOT NULL,
+    created_by UUID REFERENCES users(id) ON DELETE SET NULL,
+    expires_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT (CURRENT_TIMESTAMP + INTERVAL '30 days'),
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX idx_notifications_expires_at ON notifications (expires_at);
+CREATE INDEX idx_notifications_type ON notifications (type);
+
+CREATE TABLE user_notifications (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    notification_id UUID NOT NULL REFERENCES notifications(id) ON DELETE CASCADE,
+    is_read BOOLEAN NOT NULL DEFAULT FALSE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (user_id, notification_id)
+);
+
+CREATE INDEX idx_user_notifications_user_feed
+    ON user_notifications (user_id, is_read, created_at DESC);
+
+CREATE INDEX idx_user_notifications_notification_id
+    ON user_notifications (notification_id);
