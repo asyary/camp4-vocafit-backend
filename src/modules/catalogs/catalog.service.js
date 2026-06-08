@@ -8,6 +8,16 @@ const getCatalogItems = async () => await getCachedCatalogList({
     fetchCatalogItems: () => repository.getAllCatalogItems(),
 });
 
+const getMembershipCatalogItems = async () => {
+    const catalogs = await getCatalogItems();
+    return catalogs.filter(c => c.family === 'MEMBERSHIP');
+};
+
+const getTrainerCatalogItems = async () => {
+    const catalogs = await getCatalogItems();
+    return catalogs.filter(c => c.family === 'PERSONAL_TRAINER');
+};
+
 const createCatalogItem = async (data) => {
     const catalog = await repository.createCatalogItem(data);
     await invalidateCatalogCache(catalog.code);
@@ -34,4 +44,4 @@ const deleteCatalogItem = async (code) => {
     return catalog;
 };
 
-module.exports = { getCatalogItems, createCatalogItem, updateCatalogItem, deleteCatalogItem, reorderCatalogItems };
+module.exports = { getCatalogItems, getMembershipCatalogItems, getTrainerCatalogItems, createCatalogItem, updateCatalogItem, deleteCatalogItem, reorderCatalogItems };

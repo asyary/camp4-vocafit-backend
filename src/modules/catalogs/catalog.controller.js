@@ -10,6 +10,24 @@ const getCatalogItems = async (req, res, next) => {
     }
 };
 
+const getMembershipCatalog = async (req, res, next) => {
+    try {
+        const catalogs = await service.getMembershipCatalogItems();
+        res.success(catalogs, 'Membership catalog items retrieved successfully');
+    } catch (err) {
+        next(err);
+    }
+};
+
+const getTrainerCatalog = async (req, res, next) => {
+    try {
+        const catalogs = await service.getTrainerCatalogItems();
+        res.success(catalogs, 'Trainer catalog items retrieved successfully');
+    } catch (err) {
+        next(err);
+    }
+};
+
 const createCatalogItem = async (req, res, next) => {
     try {
         const parsedBody = createCatalogSchema.parse(req.body);
@@ -49,4 +67,4 @@ const deleteCatalogItem = async (req, res, next) => {
     }
 };
 
-module.exports = { getCatalogItems, createCatalogItem, updateCatalogItem, deleteCatalogItem, reorderCatalogItems };
+module.exports = { getCatalogItems, getMembershipCatalog, getTrainerCatalog, createCatalogItem, updateCatalogItem, deleteCatalogItem, reorderCatalogItems };
