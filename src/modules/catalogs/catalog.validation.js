@@ -17,7 +17,15 @@ const baseCatalogSchema = {
     isActive: z.preprocess(toBoolean, z.boolean().default(true))
 };
 
-const createCatalogSchema = z.object(baseCatalogSchema);
+const priceSchema = z.array(z.object({
+    tierCode: z.enum(['UMUM', 'PEGAWAI_KARYAWAN', 'MAHASISWA_NON_VOKASI', 'MAHASISWA_VOKASI']),
+    price: z.coerce.number().min(0, 'Price must be a positive number')
+})).min(1, 'At least one price is required');
+
+const createCatalogSchema = z.object({
+    ...baseCatalogSchema,
+    prices: priceSchema
+});
 
 const updateCatalogSchema = z.object({
     family: baseCatalogSchema.family.optional(),
@@ -26,7 +34,8 @@ const updateCatalogSchema = z.object({
     groupSize: baseCatalogSchema.groupSize,
     sessionCount: baseCatalogSchema.sessionCount,
     durationDays: baseCatalogSchema.durationDays,
-    isActive: z.preprocess(toBoolean, z.boolean().optional())
+    isActive: z.preprocess(toBoolean, z.boolean().optional()),
+    prices: priceSchema.optional()
 });
 
 const reorderCatalogSchema = z.object({
