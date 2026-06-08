@@ -69,11 +69,29 @@ const getUserDetailsForSocket = async (userId) => {
     return rows[0];
 };
 
+const getVisitHistory = async (userId, limit, offset) => {
+    const { rows } = await db.query(
+        'SELECT * FROM gym_visits WHERE user_id = $1 ORDER BY tap_in_time DESC LIMIT $2 OFFSET $3',
+        [userId, limit, offset]
+    );
+    return rows;
+};
+
+const countUserVisits = async (userId) => {
+    const { rows } = await db.query(
+        'SELECT COUNT(*) FROM gym_visits WHERE user_id = $1',
+        [userId]
+    );
+    return parseInt(rows[0].count, 10);
+};
+
 module.exports = {
     getActiveVisit,
     createTapIn,
     updateTapOut,
     getCrowdCount,
     applyPenaltyAndAutoTapOut,
-	getUserDetailsForSocket
+	getUserDetailsForSocket,
+    getVisitHistory,
+    countUserVisits
 };

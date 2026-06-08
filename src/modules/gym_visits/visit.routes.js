@@ -10,10 +10,15 @@ router.post('/scan', controller.scanQrCode);
 
 router.use(requireAuth);
 
-// Members request a QR code to enter/exit
-router.get('/qr', requireRole('member'), requireMembership, controller.getQrCode);
-
-// Public endpoint to check how many people are in the gym
 router.get('/crowd', controller.getCrowd);
+
+router.use(requireRole('member'));
+
+router.get('/history', controller.getMyVisitHistory);
+router.get('/status', controller.getMyVisitStatus);
+
+router.use(requireMembership);
+
+router.get('/qr', controller.getQrCode);
 
 module.exports = router;

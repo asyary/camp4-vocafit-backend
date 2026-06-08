@@ -89,4 +89,31 @@ const getCrowdMeter = async () => {
     };
 };
 
-module.exports = { generateQrToken, processScan, getCrowdMeter };
+const getMyVisitHistory = async (userId, query) => {
+    const { page, limit } = query;
+    const offset = (page - 1) * limit;
+
+    const [history, totalCount] = await Promise.all([
+        repository.getVisitHistory(userId, limit, offset),
+        repository.countUserVisits(userId)
+    ]);
+
+    return {
+        page,
+        limit,
+        total_pages: Math.ceil(totalCount / limit),
+        data: history
+    };
+};
+
+const getMyVisitStatus = async (userId) => {
+    const activeVisit = await repository.getActiveVisit(userId);
+    
+    if (activeVisit) {
+        return { status: 'INSIDE', tapInTime: activeVisit.tap_in_time };
+    } else {
+        return { status: 'OUTSIDE' };
+    }
+};
+
+module.exports = { generateQrToken, processScan, getCrowdMeter, getMyVisitHistory, getMyVisitStatus };

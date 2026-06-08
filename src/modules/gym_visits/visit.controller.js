@@ -1,5 +1,6 @@
 const service = require('./visit.service');
 const { scanQrSchema } = require('./visit.validation');
+const { paginationSchema } = require('../../utils/validation.util');
 
 const getQrCode = async (req, res, next) => {
     try {
@@ -30,4 +31,27 @@ const getCrowd = async (req, res, next) => {
     }
 };
 
-module.exports = { getQrCode, scanQrCode, getCrowd };
+const getMyVisitHistory = async (req, res, next) => {
+    try {
+        const query = paginationSchema.parse(req.query);
+        const result = await service.getMyVisitHistory(req.user.id, query);
+        res.success(result.data, 'Visit history retrieved successfully', 200, { 
+            page: result.page, 
+            limit: result.limit, 
+            total: result.total_pages 
+        });
+    } catch (err) {
+        next(err);
+    }
+};
+
+const getMyVisitStatus = async (req, res, next) => {
+    try {
+        const status = await service.getMyVisitStatus(req.user.id);
+        res.success(status, 'Visit status retrieved successfully');
+    } catch (err) {
+        next(err);
+    }
+};
+
+module.exports = { getQrCode, scanQrCode, getCrowd, getMyVisitHistory, getMyVisitStatus };
