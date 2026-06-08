@@ -3,6 +3,7 @@ const { snap } = require('../../config/midtrans');
 const repository = require('./transaction.repository');
 const crypto = require('crypto');
 const { queueOrderInvoiceEmail, queuePaymentReceiptEmail } = require('../../utils/email-queue.util');
+const { sendTransactionNotification } = require('../notifications/notifications.service');
 
 const MIDTRANS_SUCCESS_STATUSES = new Set(['capture', 'settlement']);
 const MIDTRANS_FAILURE_STATUSES = new Set(['deny', 'expire', 'cancel']);
@@ -183,6 +184,13 @@ const createPayment = async (userId, payload) => {
     } catch (error) {
         console.error('Failed to send invoice email:', error.message || error);
     }
+
+    sendTransactionNotification({
+        userId,
+        type: 'TRANSACTION_CREATED',
+        itemName: catalogItem.name,
+        amount: grossAmount
+    });
 	
     return transaction;
 };
@@ -257,7 +265,16 @@ const cancelTransaction = async (userId, role, transactionId) => {
         }
     }
 
-    return await repository.processFailedPayment(transaction.id);
+    const result = await repository.processFailedPayment(transaction.id);
+
+    sendTransactionNotification({
+        userId,
+        type: 'TRANSACTION_FAILED',
+        itemName: transaction.catalog_name || 'Pesanan',
+        amount: transaction.amount
+    });
+
+    return result;
 };
 
 const confirmCashPayment = async (transactionId, status) => {
@@ -284,8 +301,22 @@ const confirmCashPayment = async (transactionId, status) => {
         } catch (error) {
             console.error('Failed to send receipt email:', error.message || error);
         }
+
+        sendTransactionNotification({
+            userId: transaction.user_id,
+            type: 'TRANSACTION_SUCCESS',
+            itemName: transaction.catalog_name,
+            amount: transaction.amount
+        });
     } else {
         await repository.processFailedPayment(transaction.id);
+
+        sendTransactionNotification({
+            userId: transaction.user_id,
+            type: 'TRANSACTION_FAILED',
+            itemName: transaction.catalog_name || 'Pesanan',
+            amount: transaction.amount
+        });
     }
     
     return { id: transactionId, status };
@@ -354,6 +385,13 @@ const handleMidtransWebhook = async (notificationPayload) => {
             } catch (error) {
                 console.error('Failed to send receipt email:', error.message || error);
             }
+
+            sendTransactionNotification({
+                userId: transaction.user_id,
+                type: 'TRANSACTION_SUCCESS',
+                itemName: transaction.catalog_name,
+                amount: transaction.amount
+            });
         }
 
         if (transaction_status === 'settlement' && !transaction.settled_at) {
@@ -395,6 +433,14 @@ const handleMidtransWebhook = async (notificationPayload) => {
         }
 
         await repository.processFailedPayment(transaction.id);
+
+        sendTransactionNotification({
+            userId: transaction.user_id,
+            type: 'TRANSACTION_FAILED',
+            itemName: transaction.catalog_name || 'Pesanan',
+            amount: transaction.amount
+        });
+
         return { message: 'Payment marked as failed/expired' };
     }
 
