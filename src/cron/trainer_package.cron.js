@@ -2,7 +2,7 @@ const cron = require('node-cron');
 const trainerPackageRepository = require('../modules/trainers/trainer.repository');
 
 const initTrainerPackageCronJobs = () => {
-    cron.schedule('*/3 * * * *', async () => {
+    cron.schedule('0 0 * * *', async () => {
         try {
             const expiredCount = await trainerPackageRepository.expireTrainerPackages();
             if (expiredCount > 0) {
