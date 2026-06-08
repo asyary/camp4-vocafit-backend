@@ -14,6 +14,7 @@ const initSocket = (httpServer) => {
     // Namespaces
     require('../modules/gym_visits/visit.socket')(io);
     require('../modules/gym_visits/crowd.socket')(io);
+    require('../modules/notifications/notification.socket')(io);
 
     return io;
 };
