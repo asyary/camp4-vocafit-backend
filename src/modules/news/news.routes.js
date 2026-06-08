@@ -7,13 +7,14 @@ const router = express.Router();
 
 // Public
 router.get('/', controller.getNews);
+router.get('/:id', controller.getNewsById);
 
 // Admin
 router.use(requireAuth);
 router.use(requireRole('pengurus'));
 
 router.post('/', upload.single('image'), controller.createNews);
-//router.put('/:id', upload.single('image'), controller.updateNews);
+router.put('/:id', upload.single('image'), controller.updateNews);
 router.delete('/:id', controller.deleteNews);
 
 module.exports = router;

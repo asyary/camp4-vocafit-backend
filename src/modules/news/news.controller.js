@@ -15,11 +15,39 @@ const createNews = async (req, res, next) => {
     }
 };
 
+const updateNews = async (req, res, next) => {
+    try {
+        const parsedBody = newsSchema.partial().parse(req.body);
+        const fileBuffer = req.file ? req.file.buffer : null;
+        if (req.file) imageSchema.parse(req.file);
+
+        const news = await service.editNews(req.params.id, parsedBody, fileBuffer);
+        if (!news) {
+            return res.status(404).json({ success: false, message: 'News not found' });
+        }
+        res.success(news, 'News updated successfully', 200);
+    } catch (err) {
+        next(err);
+    }
+};
+
 const getNews = async (req, res, next) => {
     try {
         const { page, limit } = paginationSchema.parse(req.query);
         const result = await service.getNews(page, limit);
         res.success(result.data, 'News retrieved successfully', 200, { page, limit, total: result.total_pages });
+    } catch (err) {
+        next(err);
+    }
+};
+
+const getNewsById = async (req, res, next) => {
+    try {
+        const news = await service.getNewsById(req.params.id);
+        if (!news) {
+            return res.status(404).json({ success: false, message: 'News not found' });
+        }
+        res.success(news, 'News retrieved successfully', 200);
     } catch (err) {
         next(err);
     }
@@ -34,4 +62,4 @@ const deleteNews = async (req, res, next) => {
     }
 };
 
-module.exports = { createNews, getNews, deleteNews };
+module.exports = { createNews, updateNews, getNews, getNewsById, deleteNews };
