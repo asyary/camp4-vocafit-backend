@@ -5,6 +5,8 @@ const { requireAuth, requireRole } = require('../../middlewares/auth.middleware'
 const router = express.Router();
 
 router.get('/', controller.getCatalogItems);
+router.get('/membership', controller.getMembershipCatalog);
+router.get('/trainer', controller.getTrainerCatalog);
 
 router.use(requireAuth);
 router.use(requireRole('pengurus'));
