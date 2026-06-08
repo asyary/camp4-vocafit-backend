@@ -53,7 +53,8 @@ const createCatalogItem = async (data) => {
             groupSize,
             sessionCount,
             durationDays,
-            isActive
+            isActive,
+            prices
         } = data;
 
         await client.query('LOCK TABLE pricing_catalog IN SHARE ROW EXCLUSIVE MODE');
@@ -91,6 +92,16 @@ const createCatalogItem = async (data) => {
             [code, family, name, description || null, groupSize || null, sessionCount || null, durationDays || null, resolvedSortOrder, isActive]
         );
 
+        if (prices && prices.length > 0) {
+            for (const p of prices) {
+                await client.query(
+                    `INSERT INTO pricing_catalog_prices (catalog_code, account_tier_code, price)
+                     VALUES ($1, $2, $3)`,
+                    [code, p.tierCode, p.price]
+                );
+            }
+        }
+
         return rows[0];
     });
 };
@@ -104,7 +115,8 @@ const updateCatalogItem = async (code, data) => {
             groupSize,
             sessionCount,
             durationDays,
-            isActive
+            isActive,
+            prices
         } = data;
 
         const { rows: currentRows } = await client.query(
@@ -167,6 +179,17 @@ const updateCatalogItem = async (code, data) => {
                        updated_at`,
             [resolvedFamily, name, description, groupSize, sessionCount, durationDays, resolvedSortOrder, isActive, code]
         );
+
+        if (prices && prices.length > 0) {
+            await client.query(`DELETE FROM pricing_catalog_prices WHERE catalog_code = $1`, [code]);
+            for (const p of prices) {
+                await client.query(
+                    `INSERT INTO pricing_catalog_prices (catalog_code, account_tier_code, price)
+                     VALUES ($1, $2, $3)`,
+                    [code, p.tierCode, p.price]
+                );
+            }
+        }
 
         return rows[0];
     });
