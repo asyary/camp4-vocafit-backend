@@ -224,9 +224,33 @@ const isTrainerTransaction = (transaction) => transaction?.transaction_family ==
 const getPendingCashTransactions = async () => {
     // Only fetch cash transactions that haven't expired yet
     const { rows } = await db.query(
-        `SELECT ${TRANSACTION_SELECT_FIELDS}
+        `SELECT 
+            t.id,
+            t.user_id,
+            json_build_object(
+                'name', u.full_name,
+                'email', u.email,
+                'profileImage', u.profile_image_url
+            ) AS "user",
+            t.amount,
+            t.payment_method,
+            t.status,
+            t.penalty_amount,
+            t.catalog_code AS transaction_type,
+            c.family AS transaction_family,
+            c.name AS catalog_name,
+            t.account_tier_code,
+            t.trainer_id,
+            t.trainer_participant_emails,
+            t.trainer_group_size,
+            t.order_id,
+            t.payment_url,
+            t.expire_at,
+            t.created_at,
+            t.settled_at
          FROM transactions t
          JOIN pricing_catalog c ON c.code = t.catalog_code
+         LEFT JOIN users u ON u.id = t.user_id
          WHERE t.payment_method = 'CASH' 
          AND t.status = 'PENDING' 
          AND t.expire_at > NOW()
