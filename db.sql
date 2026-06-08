@@ -167,6 +167,7 @@ CREATE TABLE gym_visits (
 CREATE TABLE news (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     title VARCHAR(255) NOT NULL,
+    summary TEXT NOT NULL,
     content TEXT NOT NULL,
     author_id UUID REFERENCES users(id),
     image_url VARCHAR(255),
