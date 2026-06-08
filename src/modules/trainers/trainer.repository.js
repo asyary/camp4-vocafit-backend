@@ -356,7 +356,7 @@ const restorePackageSession = async (client, packageId) => {
 
 const createTrainerPackageFromTransaction = async (client, transaction) => {
     const { rows: catalogRows } = await client.query(
-        `SELECT code, group_size, session_count
+        `SELECT code, group_size, session_count, duration_days
          FROM pricing_catalog
          WHERE code = $1
            AND family = 'PERSONAL_TRAINER'
@@ -438,7 +438,7 @@ const createTrainerPackageFromTransaction = async (client, transaction) => {
             status,
             purchased_at,
             expires_at
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'ACTIVE', NOW(), NOW() + INTERVAL '30 days')
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'ACTIVE', NOW(), NOW() + ($9 * INTERVAL '1 day'))
         RETURNING *`,
         [
             transaction.id,
@@ -449,6 +449,7 @@ const createTrainerPackageFromTransaction = async (client, transaction) => {
             Number(catalog.group_size),
             Number(catalog.session_count),
             Number(catalog.session_count),
+            Number(catalog.duration_days) || 30
         ]
     );
 

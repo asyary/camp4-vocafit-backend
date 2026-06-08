@@ -2,21 +2,22 @@ const { z } = require('zod');
 
 const MAX_FILE_SIZE = 5000000;
 const ACCEPTED_IMAGE_TYPES = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
+const phoneRegex = /^\+628[1-9][0-9]{6,9}$/;
 
 const trainerSchema = z.object({
     name: z.string().min(2, 'Name must be at least 2 characters long'),
     email: z.string().email('Invalid email address'),
-    phoneNumber: z.string().optional(),
-    bio: z.string().optional(),
-    specialties: z.string().optional(),
+    phoneNumber: z.string().regex(phoneRegex, 'Invalid phone number format'),
+    bio: z.string("Bio must be a string").min(10, 'Bio must be at least 10 characters long').max(200, 'Bio must be at most 200 characters long'),
+    specialties: z.string("Specialties must be a string").min(5, 'Specialties must be at least 5 characters long').max(100, 'Specialties must be at most 100 characters long'),
 });
 
 const updateTrainerSchema = z.object({
     name: z.string().min(2, 'Name must be at least 2 characters long').optional(),
     email: z.string().email('Invalid email address').optional(),
-    phoneNumber: z.string().optional(),
-    bio: z.string().optional(),
-    specialties: z.string().optional(),
+    phoneNumber: z.string().regex(phoneRegex, 'Invalid phone number format').optional(),
+    bio: z.string("Bio must be a string").min(10, 'Bio must be at least 10 characters long').max(200, 'Bio must be at most 200 characters long').optional(),
+    specialties: z.string("Specialties must be a string").min(5, 'Specialties must be at least 5 characters long').max(100, 'Specialties must be at most 100 characters long').optional(),
 });
 
 const imageSchema = z.object({
