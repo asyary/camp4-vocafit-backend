@@ -7,6 +7,18 @@ const getUserProfile = async (id) => {
                 u.full_name,
                 u.profile_image_url,
                 u.role,
+                (
+                    SELECT json_build_object(
+                        'status', CASE WHEN m.end_date > NOW() THEN 'ACTIVE' ELSE 'EXPIRED' END,
+                        'endDate', m.end_date,
+                        'planCode', m.plan_code,
+                        'type', m.type
+                    )
+                    FROM memberships m
+                    WHERE m.user_id = u.id AND m.canceled_at IS NULL
+                    ORDER BY m.end_date DESC
+                    LIMIT 1
+                ) AS membership,
                 uat.account_tier_code AS membership_price_code,
                 t.name AS tier,
                 u.penalty_amount,
@@ -30,9 +42,25 @@ const updateProfile = async (id, data) => {
                 password = COALESCE($2, password)
             WHERE id = $3
               AND is_verified = TRUE
-            RETURNING id, email, full_name, profile_image_url
+            RETURNING id, email, full_name, profile_image_url, role
         )
-         SELECT updated.*,
+         SELECT updated.id,
+                updated.email,
+                updated.full_name,
+                updated.profile_image_url,
+                updated.role,
+                (
+                    SELECT json_build_object(
+                        'status', CASE WHEN m.end_date > NOW() THEN 'ACTIVE' ELSE 'EXPIRED' END,
+                        'endDate', m.end_date,
+                        'planCode', m.plan_code,
+                        'type', m.type
+                    )
+                    FROM memberships m
+                    WHERE m.user_id = updated.id AND m.canceled_at IS NULL
+                    ORDER BY m.end_date DESC
+                    LIMIT 1
+                ) AS membership,
                 uat.account_tier_code AS membership_price_code,
                 t.name AS tier
          FROM updated

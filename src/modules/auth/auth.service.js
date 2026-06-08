@@ -189,6 +189,7 @@ const login = async (data) => {
             name: user.full_name,
             role: user.role,
             tier: user.tier,
+            membership: user.membership,
         },
     };
 };
@@ -220,6 +221,7 @@ const verifyUser = async (token) => {
             name: verifiedUser.full_name,
             role: verifiedUser.role,
             tier: verifiedUser.tier,
+            membership: verifiedUser.membership,
         },
     };
 };

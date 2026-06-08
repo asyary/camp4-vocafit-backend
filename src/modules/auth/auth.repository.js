@@ -4,7 +4,29 @@ const queryWith = (executor, text, params) => executor.query(text, params);
 
 const findByEmail = async (email) => {
     const { rows } = await db.query(
-        `SELECT u.*,
+        `SELECT u.id,
+                u.email,
+                u.password,
+                u.full_name,
+                u.role,
+                (
+                    SELECT json_build_object(
+                        'status', CASE WHEN m.end_date > NOW() THEN 'ACTIVE' ELSE 'EXPIRED' END,
+                        'endDate', m.end_date,
+                        'planCode', m.plan_code,
+                        'type', m.type
+                    )
+                    FROM memberships m
+                    WHERE m.user_id = u.id AND m.canceled_at IS NULL
+                    ORDER BY m.end_date DESC
+                    LIMIT 1
+                ) AS membership,
+                u.is_verified,
+                u.penalty_amount,
+                u.profile_image_url,
+                u.verified_at,
+                u.created_at,
+                u.updated_at,
                 uat.account_tier_code AS membership_price_code,
                 t.name AS tier
          FROM users u
@@ -80,7 +102,24 @@ const markUserVerified = async (email, executor = db) => {
             WHERE email = $1 AND is_verified = FALSE
             RETURNING id, email, full_name, role, is_verified, verified_at
         )
-         SELECT updated.*,
+         SELECT updated.id,
+                updated.email,
+                updated.full_name,
+                updated.role,
+                (
+                    SELECT json_build_object(
+                        'status', CASE WHEN m.end_date > NOW() THEN 'ACTIVE' ELSE 'EXPIRED' END,
+                        'endDate', m.end_date,
+                        'planCode', m.plan_code,
+                        'type', m.type
+                    )
+                    FROM memberships m
+                    WHERE m.user_id = updated.id AND m.canceled_at IS NULL
+                    ORDER BY m.end_date DESC
+                    LIMIT 1
+                ) AS membership,
+                updated.is_verified,
+                updated.verified_at,
                 uat.account_tier_code AS membership_price_code,
                 t.name AS tier
          FROM updated
