@@ -13,7 +13,8 @@ const responseHandler = (req, res, next) => {
     return res.status(status).json({
       success: false,
       message,
-      data
+      data,
+	  meta: null
     });
   };
 
