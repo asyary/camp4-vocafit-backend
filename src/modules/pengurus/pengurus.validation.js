@@ -9,7 +9,7 @@ const createUserSchema = z.object({
 	fullName: z.string().min(2, 'Full name must be at least 2 characters long'),
 	password: z.string().min(8, 'Password must be at least 8 characters long'),
     phoneNumber: z.string().regex(/^\+628[1-9][0-9]{6,10}$/, "Invalid phone number format").optional(),
-    dateOfBirth: z.coerce.date().min(new Date('1900-01-01'), "Date of birth cannot be earlier than 1900").max(new Date(), "Date of birth cannot be in the future").optional(),
+    birthDate: z.coerce.date().min(new Date('1900-01-01'), "Date of birth cannot be earlier than 1900").max(new Date(), "Date of birth cannot be in the future").optional(),
 	role: z.enum(['member', 'pengurus']).default('member'),
 	membershipPriceCode: z.string().optional(),
 	penaltyAmount: z.coerce.number().min(0, 'Penalty amount must be a positive number').optional()
@@ -30,7 +30,7 @@ const updateUserSchema = z.object({
 	fullName: z.string().min(2, 'Full name must be at least 2 characters long').optional(),
 	password: z.string().min(8, 'Password must be at least 8 characters long').optional(),
     phoneNumber: z.string().regex(/^\+628[1-9][0-9]{6,10}$/, "Invalid phone number format").optional(),
-    dateOfBirth: z.coerce.date().min(new Date('1900-01-01'), "Date of birth cannot be earlier than 1900").max(new Date(), "Date of birth cannot be in the future").optional(),
+    birthDate: z.coerce.date().min(new Date('1900-01-01'), "Date of birth cannot be earlier than 1900").max(new Date(), "Date of birth cannot be in the future").optional(),
     role: z.enum(['member', 'pengurus']).optional(),
 	membershipPriceCode: z.string().nullable().optional(),
 	penaltyAmount: z.coerce.number().min(0, 'Penalty amount must be a positive number').optional()
