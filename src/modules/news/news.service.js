@@ -1,6 +1,6 @@
 const repository = require('./news.repository');
 const { uploadToCloudinary } = require('../../utils/cloudinary.util');
-const { withNewsImageThumb } = require('../../utils/image.util');
+const { replaceWithNewsImageThumb } = require('../../utils/image.util');
 
 const truncateChars = (str, maxChars = 100) => {
     if (!str) return str;
@@ -38,7 +38,7 @@ const getNews = async (page, limit) => {
 		repository.countAllNews()
 	]);
 
-    const newsWithThumbnails = news.map(item => withNewsImageThumb(item));
+    const newsWithThumbnails = news.map(item => replaceWithNewsImageThumb(item));
 
 	return {
 		page,
@@ -52,7 +52,7 @@ const getNewsById = async (id) => {
     const item = await repository.getNewsById(id);
     if (!item) return item;
 
-    return withNewsImageThumb(item);
+    return item;
 };
 
 const removeNews = async (id) => await repository.deleteNews(id);

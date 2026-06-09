@@ -21,6 +21,25 @@ const withImageThumb = (obj, sourceKey, thumbKey, transformations) => {
     return newObj;
 };
 
+const replaceWithImageThumb = (obj, sourceKey, transformations) => {
+    if (!obj) return obj;
+
+    let thumbUrl = obj[sourceKey];
+    if (
+        obj[sourceKey] &&
+        typeof obj[sourceKey] === 'string' &&
+        obj[sourceKey].includes('/upload/') &&
+        obj[sourceKey].includes('cloudinary.com')
+    ) {
+        thumbUrl = obj[sourceKey].replace('/upload/', `/upload/${transformations}/`);
+    }
+
+    return {
+        ...obj,
+        [sourceKey]: thumbUrl
+    };
+};
+
 const withProfileImageThumb = (userObj) => {
     return withImageThumb(userObj, 'profile_image_url', 'profile_image_thumb', 'c_thumb,w_100,h_100,g_face');
 };
@@ -29,4 +48,8 @@ const withNewsImageThumb = (newsObj) => {
     return withImageThumb(newsObj, 'image_url', 'image_thumb', 'c_thumb,w_544,h_306');
 };
 
-module.exports = { withImageThumb, withProfileImageThumb, withNewsImageThumb };
+const replaceWithNewsImageThumb = (newsObj) => {
+    return replaceWithImageThumb(newsObj, 'image_url', 'c_thumb,w_544,h_306');
+};
+
+module.exports = { withImageThumb, withProfileImageThumb, withNewsImageThumb, replaceWithImageThumb, replaceWithNewsImageThumb };
