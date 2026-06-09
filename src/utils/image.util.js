@@ -1,23 +1,32 @@
-const withProfileImageThumb = (userObj) => {
-    if (!userObj) return userObj;
+const withImageThumb = (obj, sourceKey, thumbKey, transformations) => {
+    if (!obj) return obj;
 
-    let profile_image_thumb = userObj.profile_image_url;
+    let thumbUrl = obj[sourceKey];
     if (
-        userObj.profile_image_url &&
-        userObj.profile_image_url.includes('/upload/') &&
-        userObj.profile_image_url.includes('cloudinary.com')
+        obj[sourceKey] &&
+        typeof obj[sourceKey] === 'string' &&
+        obj[sourceKey].includes('/upload/') &&
+        obj[sourceKey].includes('cloudinary.com')
     ) {
-        profile_image_thumb = userObj.profile_image_url.replace('/upload/', '/upload/c_thumb,w_100,h_100,g_face/');
+        thumbUrl = obj[sourceKey].replace('/upload/', `/upload/${transformations}/`);
     }
 
-    const newUser = {};
-    for (const key in userObj) {
-        newUser[key] = userObj[key];
-        if (key === 'profile_image_url') {
-            newUser.profile_image_thumb = profile_image_thumb;
+    const newObj = {};
+    for (const key in obj) {
+        newObj[key] = obj[key];
+        if (key === sourceKey) {
+            newObj[thumbKey] = thumbUrl;
         }
     }
-    return newUser;
+    return newObj;
 };
 
-module.exports = { withProfileImageThumb };
+const withProfileImageThumb = (userObj) => {
+    return withImageThumb(userObj, 'profile_image_url', 'profile_image_thumb', 'c_thumb,w_100,h_100,g_face');
+};
+
+const withNewsImageThumb = (newsObj) => {
+    return withImageThumb(newsObj, 'image_url', 'image_thumb', 'c_thumb,w_544,h_306');
+};
+
+module.exports = { withImageThumb, withProfileImageThumb, withNewsImageThumb };
