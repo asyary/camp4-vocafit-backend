@@ -140,7 +140,7 @@ const register = async (data, fileBuffer) => {
                 membershipPriceCode,
                 profileImageUrl,
                 phoneNumber: data.phoneNumber,
-                dateOfBirth: data.dateOfBirth
+                birthDate: data.birthDate
             }, client)
             : await repository.createUser({
                 ...data,
@@ -148,7 +148,7 @@ const register = async (data, fileBuffer) => {
                 membershipPriceCode,
                 profileImageUrl,
                 phoneNumber: data.phoneNumber,
-                dateOfBirth: data.dateOfBirth
+                birthDate: data.birthDate
             }, client);
 
         const savedChallenge = await repository.createChallenge({

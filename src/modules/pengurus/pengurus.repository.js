@@ -57,7 +57,7 @@ const getUserById = async (id) => {
 
 const createUser = async (data) => {
     return await db.withTransaction(async (client) => {
-        const { email, passwordHash, fullName, phoneNumber, dateOfBirth, role, membershipPriceCode, penaltyAmount, profileImageUrl } = data;
+        const { email, passwordHash, fullName, phoneNumber, birthDate, role, membershipPriceCode, penaltyAmount, profileImageUrl } = data;
 
         const { rows: insertedRows } = await client.query(
             `INSERT INTO users (
@@ -73,7 +73,7 @@ const createUser = async (data) => {
                 verified_at
             ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, TRUE, NOW())
             RETURNING id, email, full_name, phone_number, date_of_birth, profile_image_url, role, is_verified, penalty_amount, created_at, updated_at`,
-            [email, passwordHash, fullName, phoneNumber, dateOfBirth, role, penaltyAmount || 0, profileImageUrl]
+            [email, passwordHash, fullName, phoneNumber, birthDate, role, penaltyAmount || 0, profileImageUrl]
         );
 
         const user = insertedRows[0];
@@ -117,7 +117,7 @@ const createUser = async (data) => {
 
 const updateUser = async (id, data) => {
     return await db.withTransaction(async (client) => {
-        const { email, fullName, phoneNumber, dateOfBirth, role, membershipPriceCode, penaltyAmount, passwordHash, profileImageUrl } = data;
+        const { email, fullName, phoneNumber, birthDate, role, membershipPriceCode, penaltyAmount, passwordHash, profileImageUrl } = data;
 
         const { rows: updatedRows } = await client.query(
             `UPDATE users SET 
@@ -133,7 +133,7 @@ const updateUser = async (id, data) => {
             WHERE id = $9
               AND is_verified = TRUE
             RETURNING id`,
-            [email, fullName, phoneNumber, dateOfBirth, role, penaltyAmount, passwordHash, profileImageUrl, id]
+            [email, fullName, phoneNumber, birthDate, role, penaltyAmount, passwordHash, profileImageUrl, id]
         );
 
         if (!updatedRows[0]) return null;

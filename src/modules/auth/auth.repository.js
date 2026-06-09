@@ -39,7 +39,7 @@ const findByEmail = async (email) => {
 };
 
 const createUser = async (userData, executor = db) => {
-    const { email, passwordHash, fullName, phoneNumber, dateOfBirth, membershipPriceCode, profileImageUrl } = userData;
+    const { email, passwordHash, fullName, phoneNumber, birthDate, membershipPriceCode, profileImageUrl } = userData;
     const { rows } = await queryWith(
         executor,
         `WITH inserted AS (
@@ -57,13 +57,13 @@ const createUser = async (userData, executor = db) => {
          FROM inserted
          LEFT JOIN tier_insert ON tier_insert.user_id = inserted.id
          LEFT JOIN pricing_account_tiers t ON t.code = tier_insert.account_tier_code`,
-        [email, passwordHash, fullName, membershipPriceCode, profileImageUrl, phoneNumber, dateOfBirth]
+        [email, passwordHash, fullName, membershipPriceCode, profileImageUrl, phoneNumber, birthDate]
     );
     return rows[0];
 };
 
 const updateUnverifiedUser = async (userData, executor = db) => {
-    const { email, passwordHash, fullName, phoneNumber, dateOfBirth, membershipPriceCode, profileImageUrl } = userData;
+    const { email, passwordHash, fullName, phoneNumber, birthDate, membershipPriceCode, profileImageUrl } = userData;
     const { rows } = await queryWith(
         executor,
         `WITH updated AS (
@@ -90,7 +90,7 @@ const updateUnverifiedUser = async (userData, executor = db) => {
          FROM updated
          LEFT JOIN tier_upsert ON tier_upsert.user_id = updated.id
          LEFT JOIN pricing_account_tiers t ON t.code = tier_upsert.account_tier_code`,
-        [email, passwordHash, fullName, membershipPriceCode, profileImageUrl, phoneNumber, dateOfBirth]
+        [email, passwordHash, fullName, membershipPriceCode, profileImageUrl, phoneNumber, birthDate]
     );
     return rows[0];
 };
