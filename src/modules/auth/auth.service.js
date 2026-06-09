@@ -319,6 +319,55 @@ const resetPassword = async (email, otp, newPassword) => {
     return true;
 };
 
+const resendVerificationEmail = async (email) => {
+    const user = await repository.findByEmail(email);
+    if (!user || user.is_verified) {
+        return true;
+    }
+	
+    let challenge = await repository.getActiveChallenge(email, CHALLENGE_TYPES.EMAIL_VERIFICATION);
+    if (!challenge) {
+        const verificationsToday = await repository.countChallengesCreatedToday(email, CHALLENGE_TYPES.EMAIL_VERIFICATION);
+        if (verificationsToday >= 2) {
+            throw new Error('Daily verification limit reached. Please try again tomorrow.');
+        }
+
+        const verificationToken = generateVerificationToken();
+        const tokenHash = hashValue(verificationToken);
+        const expiresAt = new Date(Date.now() + TOKEN_TTL_MINUTES * 60 * 1000);
+
+        await repository.createChallenge({
+            email: user.email,
+            userId: user.id,
+            challengeType: CHALLENGE_TYPES.EMAIL_VERIFICATION,
+            tokenHash,
+            expiresAt,
+            nextResendAt: null,
+        });
+
+        await queueVerificationEmail(user.email, user.full_name, verificationToken);
+        return true;
+    }
+
+    if (challenge.resend_count >= 2) {
+        throw new Error('Verification resend limit reached. Please wait until the current verification expires.');
+    }
+
+    if (challenge.next_resend_at && new Date(challenge.next_resend_at) > new Date()) {
+        throw new Error('Please wait before requesting the verification email again.');
+    }
+
+    const verificationToken = generateVerificationToken();
+    const tokenHash = hashValue(verificationToken);
+    
+    // First resend (resend_count = 0) can be done immediately, next one needs to wait 5 minutes
+    const nextResendAt = new Date(Date.now() + 5 * 60 * 1000); 
+
+    await repository.updateVerificationChallenge(challenge.id, tokenHash, nextResendAt);
+    await queueVerificationEmail(user.email, user.full_name, verificationToken);
+    return true;
+};
+
 module.exports = {
     register,
     login,
@@ -326,4 +375,5 @@ module.exports = {
     requestPasswordReset,
     resendPasswordResetOtp,
     resetPassword,
+    resendVerificationEmail,
 };

@@ -1,5 +1,5 @@
 const authService = require('./auth.service');
-const { registerSchema, loginSchema, forgotPasswordSchema, resetPasswordSchema } = require('./auth.validation');
+const { registerSchema, loginSchema, forgotPasswordSchema, resetPasswordSchema, resendVerificationEmailSchema } = require('./auth.validation');
 const { setTokens, clearTokens } = require('../../utils/cookie.util');
 
 const register = async (req, res, next) => {
@@ -85,4 +85,14 @@ const resetPassword = async (req, res, next) => {
     }
 };
 
-module.exports = { register, verifyEmail, login, logout, forgotPassword, resendForgotPasswordOtp, resetPassword };
+const resendVerificationEmail = async (req, res, next) => {
+    try {
+        const parsedBody = resendVerificationEmailSchema.parse(req.body);
+        await authService.resendVerificationEmail(parsedBody.email);
+        res.success(null, 'If the account is registered, a verification email has been sent.');
+    } catch (err) {
+        next(err);
+    }
+};
+
+module.exports = { register, verifyEmail, login, logout, forgotPassword, resendForgotPasswordOtp, resetPassword, resendVerificationEmail };
