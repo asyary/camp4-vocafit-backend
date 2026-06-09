@@ -38,10 +38,19 @@ const getNews = async (page, limit) => {
 	]);
 
     const newsWithThumbnails = news.map(item => {
+        let image_thumb = item.image_url;
         if (item.image_url && item.image_url.includes('/upload/') && item.image_url.includes('cloudinary.com')) {
-            item.image_url = item.image_url.replace('/upload/', '/upload/c_thumb,w_544,h_306/');
+            image_thumb = item.image_url.replace('/upload/', '/upload/c_thumb,w_544,h_306/');
         }
-        return item;
+
+        const newItem = {};
+        for (const key in item) {
+            if (key === 'image_url') {
+                newItem.image_thumb = image_thumb;
+            }
+            newItem[key] = item[key];
+        }
+        return newItem;
     });
 
 	return {
@@ -53,7 +62,22 @@ const getNews = async (page, limit) => {
 };
 
 const getNewsById = async (id) => {
-    return await repository.getNewsById(id);
+    const item = await repository.getNewsById(id);
+    if (!item) return item;
+
+    let image_thumb = item.image_url;
+    if (item.image_url && item.image_url.includes('/upload/') && item.image_url.includes('cloudinary.com')) {
+        image_thumb = item.image_url.replace('/upload/', '/upload/c_thumb,w_544,h_306/');
+    }
+
+    const newItem = {};
+    for (const key in item) {
+        if (key === 'image_url') {
+            newItem.image_thumb = image_thumb;
+        }
+        newItem[key] = item[key];
+    }
+    return newItem;
 };
 
 const removeNews = async (id) => await repository.deleteNews(id);
