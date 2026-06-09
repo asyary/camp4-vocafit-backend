@@ -3,7 +3,9 @@ const controller = require('./auth.controller');
 const upload = require('../../middlewares/upload.middleware');
 const router = express.Router();
 
+// These routes needs captcha
 router.post('/register', upload.single('image'), controller.register);
+router.post('/register/resend', controller.resendVerificationEmail);
 router.get('/verify-email/:token', controller.verifyEmail);
 router.post('/login', controller.login);
 router.post('/logout', controller.logout);

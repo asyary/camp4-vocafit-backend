@@ -277,6 +277,21 @@ const updatePasswordHashByEmail = async (email, passwordHash, executor = db) => 
     return rows[0];
 };
 
+const updateVerificationChallenge = async (challengeId, tokenHash, nextResendAt, executor = db) => {
+    const { rows } = await queryWith(
+        executor,
+        `UPDATE auth_challenges
+         SET token_hash = $2,
+             resend_count = resend_count + 1,
+             next_resend_at = $3,
+             updated_at = NOW()
+         WHERE id = $1 AND status = 'PENDING'
+         RETURNING *`,
+        [challengeId, tokenHash, nextResendAt]
+    );
+    return rows[0];
+};
+
 module.exports = {
     findByEmail,
     createUser,
@@ -292,4 +307,5 @@ module.exports = {
     incrementChallengeAttempt,
     updatePasswordResetOtp,
     updatePasswordHashByEmail,
+    updateVerificationChallenge,
 };
