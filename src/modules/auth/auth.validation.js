@@ -7,6 +7,8 @@ const registerSchema = z.object({
     email: z.email(),
     password: z.string().min(6, "Password must be at least 6 characters long"),
     fullName: z.string().min(2, "Full name must be at least 2 characters long"),
+    phoneNumber: z.string().regex(/^\+628[1-9][0-9]{6,10}$/, "Invalid phone number format").optional(),
+    dateOfBirth: z.coerce.date().min(new Date('1900-01-01'), "Date of birth cannot be earlier than 1900").max(new Date(), "Date of birth cannot be in the future").optional(),
 	image: z
         .any()
         .refine((file) => !!file, 'Profile image is required')

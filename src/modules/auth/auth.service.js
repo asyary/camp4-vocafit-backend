@@ -138,13 +138,17 @@ const register = async (data, fileBuffer) => {
                 ...data,
                 passwordHash,
                 membershipPriceCode,
-                profileImageUrl
+                profileImageUrl,
+                phoneNumber: data.phoneNumber,
+                dateOfBirth: data.dateOfBirth
             }, client)
             : await repository.createUser({
                 ...data,
                 passwordHash,
                 membershipPriceCode,
-                profileImageUrl
+                profileImageUrl,
+                phoneNumber: data.phoneNumber,
+                dateOfBirth: data.dateOfBirth
             }, client);
 
         const savedChallenge = await repository.createChallenge({

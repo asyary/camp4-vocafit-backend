@@ -39,12 +39,12 @@ const findByEmail = async (email) => {
 };
 
 const createUser = async (userData, executor = db) => {
-    const { email, passwordHash, fullName, membershipPriceCode, profileImageUrl } = userData;
+    const { email, passwordHash, fullName, phoneNumber, dateOfBirth, membershipPriceCode, profileImageUrl } = userData;
     const { rows } = await queryWith(
         executor,
         `WITH inserted AS (
-            INSERT INTO users (email, password, full_name, profile_image_url) 
-            VALUES ($1, $2, $3, $5)
+            INSERT INTO users (email, password, full_name, phone_number, date_of_birth, profile_image_url) 
+            VALUES ($1, $2, $3, $6, $7, $5)
             RETURNING id, email, full_name, role, is_verified, verified_at
         ), tier_insert AS (
             INSERT INTO user_account_tiers (user_id, account_tier_code)
@@ -57,19 +57,21 @@ const createUser = async (userData, executor = db) => {
          FROM inserted
          LEFT JOIN tier_insert ON tier_insert.user_id = inserted.id
          LEFT JOIN pricing_account_tiers t ON t.code = tier_insert.account_tier_code`,
-        [email, passwordHash, fullName, membershipPriceCode, profileImageUrl]
+        [email, passwordHash, fullName, membershipPriceCode, profileImageUrl, phoneNumber, dateOfBirth]
     );
     return rows[0];
 };
 
 const updateUnverifiedUser = async (userData, executor = db) => {
-    const { email, passwordHash, fullName, membershipPriceCode, profileImageUrl } = userData;
+    const { email, passwordHash, fullName, phoneNumber, dateOfBirth, membershipPriceCode, profileImageUrl } = userData;
     const { rows } = await queryWith(
         executor,
         `WITH updated AS (
             UPDATE users 
             SET password = $2,
                 full_name = $3,
+                phone_number = COALESCE($6, phone_number),
+                date_of_birth = COALESCE($7, date_of_birth),
                 profile_image_url = $5,
                 updated_at = NOW()
             WHERE email = $1 AND is_verified = FALSE
@@ -88,7 +90,7 @@ const updateUnverifiedUser = async (userData, executor = db) => {
          FROM updated
          LEFT JOIN tier_upsert ON tier_upsert.user_id = updated.id
          LEFT JOIN pricing_account_tiers t ON t.code = tier_upsert.account_tier_code`,
-        [email, passwordHash, fullName, membershipPriceCode, profileImageUrl]
+        [email, passwordHash, fullName, membershipPriceCode, profileImageUrl, phoneNumber, dateOfBirth]
     );
     return rows[0];
 };
