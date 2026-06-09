@@ -5,6 +5,8 @@ const getAllUsers = async (limit, offset) => {
         `SELECT u.id,
                 u.email,
                 u.full_name,
+                u.phone_number,
+                u.date_of_birth,
                 u.profile_image_url,
                 u.role,
                 uat.account_tier_code AS membership_price_code,
@@ -32,6 +34,8 @@ const getUserById = async (id) => {
         `SELECT u.id,
                 u.email,
                 u.full_name,
+                u.phone_number,
+                u.date_of_birth,
                 u.profile_image_url,
                 u.role,
                 u.is_verified,
@@ -53,21 +57,23 @@ const getUserById = async (id) => {
 
 const createUser = async (data) => {
     return await db.withTransaction(async (client) => {
-        const { email, passwordHash, fullName, role, membershipPriceCode, penaltyAmount, profileImageUrl } = data;
+        const { email, passwordHash, fullName, phoneNumber, dateOfBirth, role, membershipPriceCode, penaltyAmount, profileImageUrl } = data;
 
         const { rows: insertedRows } = await client.query(
             `INSERT INTO users (
                 email,
                 password,
                 full_name,
+                phone_number,
+                date_of_birth,
                 role,
                 penalty_amount,
                 profile_image_url,
                 is_verified,
                 verified_at
-            ) VALUES ($1, $2, $3, $4, $5, $6, TRUE, NOW())
-            RETURNING id, email, full_name, profile_image_url, role, is_verified, penalty_amount, created_at, updated_at`,
-            [email, passwordHash, fullName, role, penaltyAmount || 0, profileImageUrl]
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, TRUE, NOW())
+            RETURNING id, email, full_name, phone_number, date_of_birth, profile_image_url, role, is_verified, penalty_amount, created_at, updated_at`,
+            [email, passwordHash, fullName, phoneNumber, dateOfBirth, role, penaltyAmount || 0, profileImageUrl]
         );
 
         const user = insertedRows[0];
@@ -88,6 +94,8 @@ const createUser = async (data) => {
             `SELECT u.id,
                     u.email,
                     u.full_name,
+                    u.phone_number,
+                    u.date_of_birth,
                     u.profile_image_url,
                     u.role,
                     u.is_verified,
@@ -109,21 +117,23 @@ const createUser = async (data) => {
 
 const updateUser = async (id, data) => {
     return await db.withTransaction(async (client) => {
-        const { email, fullName, role, membershipPriceCode, penaltyAmount, passwordHash, profileImageUrl } = data;
+        const { email, fullName, phoneNumber, dateOfBirth, role, membershipPriceCode, penaltyAmount, passwordHash, profileImageUrl } = data;
 
         const { rows: updatedRows } = await client.query(
             `UPDATE users SET 
                 email = COALESCE($1, email),
                 full_name = COALESCE($2, full_name),
-                role = COALESCE($3, role), 
-                penalty_amount = COALESCE($4, penalty_amount),
-                password = COALESCE($5, password),
-                profile_image_url = COALESCE($6, profile_image_url),
+                phone_number = COALESCE($3, phone_number),
+                date_of_birth = COALESCE($4, date_of_birth),
+                role = COALESCE($5, role), 
+                penalty_amount = COALESCE($6, penalty_amount),
+                password = COALESCE($7, password),
+                profile_image_url = COALESCE($8, profile_image_url),
                 updated_at = NOW()
-            WHERE id = $7
+            WHERE id = $9
               AND is_verified = TRUE
             RETURNING id`,
-            [email, fullName, role, penaltyAmount, passwordHash, profileImageUrl, id]
+            [email, fullName, phoneNumber, dateOfBirth, role, penaltyAmount, passwordHash, profileImageUrl, id]
         );
 
         if (!updatedRows[0]) return null;
@@ -151,6 +161,8 @@ const updateUser = async (id, data) => {
             `SELECT u.id,
                     u.email,
                     u.full_name,
+                    u.phone_number,
+                    u.date_of_birth,
                     u.profile_image_url,
                     u.role,
                     u.is_verified,

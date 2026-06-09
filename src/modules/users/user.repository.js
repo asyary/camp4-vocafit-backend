@@ -5,6 +5,8 @@ const getUserProfile = async (id) => {
         `SELECT u.id,
                 u.email,
                 u.full_name,
+                u.phone_number,
+                u.date_of_birth,
                 u.profile_image_url,
                 u.role,
                 (
@@ -42,11 +44,13 @@ const updateProfile = async (id, data) => {
                 password = COALESCE($2, password)
             WHERE id = $3
               AND is_verified = TRUE
-            RETURNING id, email, full_name, profile_image_url, role
+            RETURNING id, email, full_name, phone_number, date_of_birth, profile_image_url, role
         )
          SELECT updated.id,
                 updated.email,
                 updated.full_name,
+                updated.phone_number,
+                updated.date_of_birth,
                 updated.profile_image_url,
                 updated.role,
                 (
