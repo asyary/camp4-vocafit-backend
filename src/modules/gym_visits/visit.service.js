@@ -3,6 +3,7 @@ const redisClient = require('../../config/redis');
 const repository = require('./visit.repository');
 const visitSocket = require('./visit.socket');
 const crowdSocket = require('./crowd.socket');
+const { withProfileImageThumb } = require('../../utils/image.util');
 
 const generateQrToken = async (userId) => {
     const qrToken = crypto.randomUUID();
@@ -50,7 +51,7 @@ const processScan = async (qrToken, iotSecret) => {
 
 		visitSocket.emitVisitActivity({
             action: 'TAP_OUT',
-            user: userDetails,
+            user: withProfileImageThumb(userDetails),
             time: new Date(),
             emittedFrom: 'visit.service.processScan'
         });
@@ -62,7 +63,7 @@ const processScan = async (qrToken, iotSecret) => {
 
 		visitSocket.emitVisitActivity({
             action: 'TAP_IN',
-            user: userDetails,
+            user: withProfileImageThumb(userDetails),
             time: new Date(),
             emittedFrom: 'visit.service.processScan'
         });

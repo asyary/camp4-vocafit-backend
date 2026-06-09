@@ -1,10 +1,11 @@
 const bcrypt = require('bcrypt');
 const repository = require('./user.repository');
+const { withProfileImageThumb } = require('../../utils/image.util');
 
 const getMyProfile = async (userId) => {
     const user = await repository.getUserProfile(userId);
     if (!user) throw new Error('User not found');
-    return user;
+    return withProfileImageThumb(user);
 };
 
 const updateMyProfile = async (userId, data) => {
@@ -13,16 +14,17 @@ const updateMyProfile = async (userId, data) => {
         passwordHash = await bcrypt.hash(data.password, 10);
     }
     
-    return await repository.updateProfile(userId, { 
+    const updatedUser = await repository.updateProfile(userId, { 
         fullName: data.fullName, 
         passwordHash 
     });
+    return withProfileImageThumb(updatedUser);
 };
 
 const deleteMyAccount = async (userId) => {
     const invalidatedUser = await repository.invalidateAccount(userId);
     if (!invalidatedUser) throw new Error('User not found');
-    return invalidatedUser;
+    return invalidatedUser; // invalidateAccount returns id, email, full_name, role. No profile_image_url
 };
 
 module.exports = { getMyProfile, updateMyProfile, deleteMyAccount };

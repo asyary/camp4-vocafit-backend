@@ -163,7 +163,7 @@ const register = async (data, fileBuffer) => {
     });
 
     await queueVerificationEmail(user.email, user.full_name, verificationToken);
-    return { user, challenge };
+    return true;
 };
 
 const login = async (data) => {
