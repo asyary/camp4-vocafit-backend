@@ -419,6 +419,29 @@ const resetPassword = async (email, otp, newPassword) => {
     return true;
 };
 
+const verifyOtp = async (email, otp) => {
+    const challenge = await repository.getActiveChallenge(email, CHALLENGE_TYPES.PASSWORD_RESET);
+    if (!challenge) throw new Error('Invalid or expired OTP');
+
+    if (challenge.attempt_count >= 3) {
+        await repository.expireChallenge(challenge.id);
+        throw new Error('OTP attempt limit reached');
+    }
+
+    const otpHash = hashValue(`${email}:${otp}`);
+    const validOtp = challenge.otp_hash === otpHash;
+
+    if (!validOtp) {
+        const updatedChallenge = await repository.incrementChallengeAttempt(challenge.id);
+        if (updatedChallenge.attempt_count >= 3) {
+            await repository.expireChallenge(challenge.id);
+        }
+        throw new Error('Invalid or expired OTP');
+    }
+
+    return true;
+};
+
 const resendVerificationEmail = async (email) => {
     const user = await repository.findByEmail(email);
     if (!user || user.is_verified) {
@@ -653,6 +676,7 @@ module.exports = {
     requestPasswordReset,
     resendPasswordResetOtp,
     resetPassword,
+    verifyOtp,
     resendVerificationEmail,
     registerGoogle,
     loginGoogle,
