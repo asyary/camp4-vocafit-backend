@@ -264,10 +264,10 @@ CREATE INDEX idx_trainer_sessions_package_id
     ON trainer_sessions (package_id);
 
 INSERT INTO trainers (name, email, phone_number, bio, specialties, image_url, is_active) VALUES
-    ('Alya Pratama', 'alya.pratama@vocafit.example', '+62-811-1111-111', 'Strength and mobility coach focused on safe progression and recovery.', 'Strength training, mobility, injury prevention', 'https://images.example.com/trainers/alya-pratama.jpg', TRUE),
-    ('Rafi Nugroho', 'rafi.nugroho@vocafit.example', '+62-812-2222-222', 'High-energy conditioning coach with HIIT and athletic performance focus.', 'HIIT, conditioning, athletic performance', 'https://images.example.com/trainers/rafi-nugroho.jpg', TRUE),
-    ('Sinta Kurnia', 'sinta.kurnia@vocafit.example', '+62-813-3333-333', 'Body recomposition specialist with nutrition coaching background.', 'Body recomposition, core training, nutrition basics', 'https://images.example.com/trainers/sinta-kurnia.jpg', TRUE),
-    ('Dimas Hartono', 'dimas.hartono@vocafit.example', '+62-814-4444-444', 'Beginner-friendly trainer emphasizing form, consistency, and confidence.', 'Beginner programs, functional training', 'https://images.example.com/trainers/dimas-hartono.jpg', TRUE);
+    ('Alya Pratama', 'alya.pratama@vocafit.example', '+62-811-1111-111', 'Strength and mobility coach focused on safe progression and recovery.', 'Strength training, mobility, injury prevention', 'https://res.cloudinary.com/dwkg2lzsd/image/upload/v1780020902/vocafit/users/bv2wvimgvcc2hgau41oc.png', TRUE),
+    ('Rafi Nugroho', 'rafi.nugroho@vocafit.example', '+62-812-2222-222', 'High-energy conditioning coach with HIIT and athletic performance focus.', 'HIIT, conditioning, athletic performance', 'https://res.cloudinary.com/dwkg2lzsd/image/upload/v1780020902/vocafit/users/bv2wvimgvcc2hgau41oc.png', TRUE),
+    ('Sinta Kurnia', 'sinta.kurnia@vocafit.example', '+62-813-3333-333', 'Body recomposition specialist with nutrition coaching background.', 'Body recomposition, core training, nutrition basics', 'https://res.cloudinary.com/dwkg2lzsd/image/upload/v1780020902/vocafit/users/bv2wvimgvcc2hgau41oc.png', TRUE),
+    ('Dimas Hartono', 'dimas.hartono@vocafit.example', '+62-814-4444-444', 'Beginner-friendly trainer emphasizing form, consistency, and confidence.', 'Beginner programs, functional training', 'https://res.cloudinary.com/dwkg2lzsd/image/upload/v1780020902/vocafit/users/bv2wvimgvcc2hgau41oc.png', TRUE);
 
 CREATE TYPE gym_unit AS ENUM ('kg', 'm', 'km', 'l', 'sec', 'min', 'hr', 'reps', 'sets', 'cal', 'steps', 'other');
 
