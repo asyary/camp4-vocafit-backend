@@ -230,7 +230,7 @@ const getPendingCashTransactions = async () => {
             json_build_object(
                 'name', u.full_name,
                 'email', u.email,
-                'profileImage', u.profile_image_url
+                'profile_image_url', u.profile_image_url
             ) AS "user",
             t.amount,
             t.payment_method,
