@@ -292,6 +292,66 @@ const updateVerificationChallenge = async (challengeId, tokenHash, nextResendAt,
     return rows[0];
 };
 
+const createAuthLog = async (logData, executor = db) => {
+    const { userId, email, ipAddress, userAgent, isSuccess, reason } = logData;
+    const { rows } = await queryWith(
+        executor,
+        `INSERT INTO auth_logs (user_id, email, ip_address, user_agent, is_success, reason)
+         VALUES ($1, $2, $3, $4, $5, $6)
+         RETURNING *`,
+        [userId || null, email, ipAddress, userAgent, isSuccess, reason]
+    );
+    return rows[0];
+};
+
+const getRecentFailedLogins = async (email, ipAddress) => {
+    const { rows } = await db.query(
+        `SELECT created_at
+         FROM auth_logs
+         WHERE email = $1 AND ip_address = $2 AND is_success = FALSE
+           AND created_at >= NOW() - INTERVAL '10 minutes'
+         ORDER BY created_at DESC`,
+        [email, ipAddress]
+    );
+    return rows;
+};
+
+const createUserSession = async (sessionData, executor = db) => {
+    const { id, userId, refreshTokenHash, ipAddress, city, country, deviceType, userAgent } = sessionData;
+    const { rows } = await queryWith(
+        executor,
+        `INSERT INTO user_sessions (id, user_id, refresh_token_hash, ip_address, city, country, device_type, user_agent)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+         RETURNING *`,
+        [id, userId, refreshTokenHash, ipAddress, city, country, deviceType, userAgent]
+    );
+    return rows[0];
+};
+
+const invalidateSession = async (sessionId, executor = db) => {
+    const { rows } = await queryWith(
+        executor,
+        `UPDATE user_sessions
+         SET is_active = FALSE
+         WHERE id = $1
+         RETURNING *`,
+        [sessionId]
+    );
+    return rows[0];
+};
+
+const invalidateAllUserSessions = async (userId, executor = db) => {
+    const { rows } = await queryWith(
+        executor,
+        `UPDATE user_sessions
+         SET is_active = FALSE
+         WHERE user_id = $1 AND is_active = TRUE
+         RETURNING *`,
+        [userId]
+    );
+    return rows;
+};
+
 module.exports = {
     findByEmail,
     createUser,
@@ -308,4 +368,9 @@ module.exports = {
     updatePasswordResetOtp,
     updatePasswordHashByEmail,
     updateVerificationChallenge,
+    createAuthLog,
+    getRecentFailedLogins,
+    createUserSession,
+    invalidateSession,
+    invalidateAllUserSessions,
 };

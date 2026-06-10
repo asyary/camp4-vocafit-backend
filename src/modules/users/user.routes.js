@@ -10,6 +10,8 @@ router.get('/me', controller.getMe);
 router.put('/me', controller.updateMe);
 router.put('/me/password', controller.updatePassword);
 router.delete('/me', controller.deleteMe);
+router.get('/sessions', controller.getMySessions);
+router.delete('/sessions/:sessionId', controller.revokeMySession);
 // router.get('/me/activities', controller.getMyActivities);
 // router.get('/me/transactions', controller.getMyTransactions);
 // router.get('/me/visits', controller.getMyVisits);

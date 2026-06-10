@@ -1,5 +1,6 @@
 const bcrypt = require('bcrypt');
 const repository = require('./user.repository');
+const authRepository = require('../auth/auth.repository');
 const { withProfileImageThumb } = require('../../utils/image.util');
 
 const getMyProfile = async (userId) => {
@@ -33,6 +34,28 @@ const updateMyPassword = async (userId, currentPassword, newPassword) => {
 
     const newPasswordHash = await bcrypt.hash(newPassword, 12);
     await repository.updatePassword(userId, newPasswordHash);
+    await authRepository.invalidateAllUserSessions(userId);
 };
 
-module.exports = { getMyProfile, updateMyProfile, deleteMyAccount, updateMyPassword };
+const getMySessions = async (userId, currentSessionId) => {
+    const sessions = await repository.getActiveSessions(userId);
+    return sessions.map(session => ({
+        id: session.id,
+        ip_address: session.ip_address,
+        is_current: session.id === currentSessionId,
+        city: session.city,
+        country: session.country,
+        device_type: session.device_type,
+        user_agent: session.user_agent,
+        created_at: session.created_at,
+        last_active_at: session.last_active_at
+    }));
+};
+
+const revokeMySession = async (userId, sessionId) => {
+    const session = await repository.revokeSession(userId, sessionId);
+    if (!session) throw new Error('Session not found or already inactive');
+    return session;
+};
+
+module.exports = { getMyProfile, updateMyProfile, deleteMyAccount, updateMyPassword, getMySessions, revokeMySession };
