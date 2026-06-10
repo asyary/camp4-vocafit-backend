@@ -1,5 +1,5 @@
 const authService = require('./auth.service');
-const { registerSchema, loginSchema, forgotPasswordSchema, resetPasswordSchema, resendVerificationEmailSchema } = require('./auth.validation');
+const { registerSchema, loginSchema, forgotPasswordSchema, resetPasswordSchema, resendVerificationEmailSchema, registerGoogleSchema, loginGoogleSchema } = require('./auth.validation');
 const { setTokens, clearTokens } = require('../../utils/cookie.util');
 
 const register = async (req, res, next) => {
@@ -105,4 +105,34 @@ const resendVerificationEmail = async (req, res, next) => {
     }
 };
 
-module.exports = { register, verifyEmail, login, logout, forgotPassword, resendForgotPasswordOtp, resetPassword, resendVerificationEmail };
+const registerGoogle = async (req, res, next) => {
+    try {
+        const parsedBody = registerGoogleSchema.parse({ ...req.body, image: req.file });
+        const ipAddress = req.ip || req.connection.remoteAddress;
+        const userAgent = req.headers['user-agent'];
+        const fileBuffer = req.file ? req.file.buffer : null;
+
+        const { accessToken, refreshToken, user } = await authService.registerGoogle(parsedBody, fileBuffer, ipAddress, userAgent);
+
+        setTokens(res, accessToken, refreshToken);
+        res.success(user, 'Google Registration successful.', 201);
+    } catch (err) {
+        next(err);
+    }
+};
+
+const loginGoogle = async (req, res, next) => {
+    try {
+        const parsedBody = loginGoogleSchema.parse(req.body);
+        const ipAddress = req.ip || req.connection.remoteAddress;
+        const userAgent = req.headers['user-agent'];
+        const { accessToken, refreshToken, user } = await authService.loginGoogle(parsedBody, ipAddress, userAgent);
+        
+        setTokens(res, accessToken, refreshToken);
+        res.success(user, 'Google Login successful', 200);
+    } catch (err) {
+        next(err);
+    }
+};
+
+module.exports = { register, verifyEmail, login, logout, forgotPassword, resendForgotPasswordOtp, resetPassword, resendVerificationEmail, registerGoogle, loginGoogle };

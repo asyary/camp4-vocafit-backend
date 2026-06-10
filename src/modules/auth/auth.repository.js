@@ -39,12 +39,12 @@ const findByEmail = async (email) => {
 };
 
 const createUser = async (userData, executor = db) => {
-    const { email, passwordHash, fullName, phoneNumber, birthDate, membershipPriceCode, profileImageUrl } = userData;
+    const { email, passwordHash, fullName, phoneNumber, birthDate, membershipPriceCode, profileImageUrl, isVerified = false, googleId = null } = userData;
     const { rows } = await queryWith(
         executor,
         `WITH inserted AS (
-            INSERT INTO users (email, password, full_name, phone_number, date_of_birth, profile_image_url) 
-            VALUES ($1, $2, $3, $6, $7, $5)
+            INSERT INTO users (email, password, full_name, phone_number, date_of_birth, profile_image_url, is_verified, verified_at, google_id) 
+            VALUES ($1, $2, $3, $6, $7, $5, $8, CASE WHEN $8 = TRUE THEN NOW() ELSE NULL END, $9)
             RETURNING id, email, full_name, role, is_verified, verified_at
         ), tier_insert AS (
             INSERT INTO user_account_tiers (user_id, account_tier_code)
@@ -57,13 +57,13 @@ const createUser = async (userData, executor = db) => {
          FROM inserted
          LEFT JOIN tier_insert ON tier_insert.user_id = inserted.id
          LEFT JOIN pricing_account_tiers t ON t.code = tier_insert.account_tier_code`,
-        [email, passwordHash, fullName, membershipPriceCode, profileImageUrl, phoneNumber, birthDate]
+        [email, passwordHash, fullName, membershipPriceCode, profileImageUrl, phoneNumber, birthDate, isVerified, googleId]
     );
     return rows[0];
 };
 
 const updateUnverifiedUser = async (userData, executor = db) => {
-    const { email, passwordHash, fullName, phoneNumber, birthDate, membershipPriceCode, profileImageUrl } = userData;
+    const { email, passwordHash, fullName, phoneNumber, birthDate, membershipPriceCode, profileImageUrl, isVerified = false, googleId = null } = userData;
     const { rows } = await queryWith(
         executor,
         `WITH updated AS (
@@ -73,6 +73,9 @@ const updateUnverifiedUser = async (userData, executor = db) => {
                 phone_number = COALESCE($6, phone_number),
                 date_of_birth = COALESCE($7, date_of_birth),
                 profile_image_url = $5,
+                is_verified = $8,
+                verified_at = CASE WHEN $8 = TRUE THEN NOW() ELSE verified_at END,
+                google_id = COALESCE($9, google_id),
                 updated_at = NOW()
             WHERE email = $1 AND is_verified = FALSE
             RETURNING id, email, full_name, role, is_verified, verified_at
@@ -90,7 +93,22 @@ const updateUnverifiedUser = async (userData, executor = db) => {
          FROM updated
          LEFT JOIN tier_upsert ON tier_upsert.user_id = updated.id
          LEFT JOIN pricing_account_tiers t ON t.code = tier_upsert.account_tier_code`,
-        [email, passwordHash, fullName, membershipPriceCode, profileImageUrl, phoneNumber, birthDate]
+        [email, passwordHash, fullName, membershipPriceCode, profileImageUrl, phoneNumber, birthDate, isVerified, googleId]
+    );
+    return rows[0];
+};
+
+const linkGoogleAccount = async (email, googleId, executor = db) => {
+    const { rows } = await queryWith(
+        executor,
+        `UPDATE users
+         SET google_id = $2,
+             is_verified = TRUE,
+             verified_at = COALESCE(verified_at, NOW()),
+             updated_at = NOW()
+         WHERE email = $1
+         RETURNING id, email, full_name, role, is_verified, verified_at`,
+        [email, googleId]
     );
     return rows[0];
 };
@@ -357,6 +375,7 @@ module.exports = {
     createUser,
     updateUnverifiedUser,
     markUserVerified,
+    linkGoogleAccount,
     countChallengesCreatedToday,
     getActiveChallenge,
     getVerificationChallengeByTokenHash,

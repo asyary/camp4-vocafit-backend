@@ -5,7 +5,9 @@ const repository = require('./auth.repository');
 const { queueVerificationEmail, queuePasswordResetOtpEmail } = require('../../utils/email-queue.util');
 const { generateAccessToken, generateRefreshToken, verifyAccessToken } = require('../../utils/jwt.util');
 const { uploadToCloudinary } = require('../../utils/cloudinary.util');
+const { OAuth2Client } = require('google-auth-library');
 
+const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 const CHALLENGE_TYPES = {
     EMAIL_VERIFICATION: 'EMAIL_VERIFICATION',
     PASSWORD_RESET: 'PASSWORD_RESET',
@@ -482,6 +484,167 @@ const logout = async (token) => {
     }
 };
 
+const verifyGoogleToken = async (token) => {
+    try {
+        const ticket = await googleClient.verifyIdToken({
+            idToken: token,
+            audience: process.env.GOOGLE_CLIENT_ID,
+        });
+        return ticket.getPayload();
+    } catch (err) {
+        throw createServiceError('Invalid Google token', 400);
+    }
+};
+
+const registerGoogle = async (data, fileBuffer, ipAddress, userAgent) => {
+    const payload = await verifyGoogleToken(data.googleToken);
+    const email = payload.email;
+    const defaultPicture = payload.picture;
+    const googleId = payload.sub;
+
+    const existingUser = await repository.findByEmail(email);
+    const activeVerification = existingUser && !existingUser.is_verified
+        ? await repository.getActiveChallenge(email, CHALLENGE_TYPES.EMAIL_VERIFICATION)
+        : null;
+
+    if (existingUser && existingUser.is_verified) {
+        throw new Error('Email already registered. Please log in instead.');
+    }
+
+    let profileImageUrl = defaultPicture;
+
+    if (fileBuffer) {
+        profileImageUrl = await uploadToCloudinary(fileBuffer, 'users');
+    } else {
+        const imageUrlToFetch = defaultPicture || ('https://ui-avatars.com/api/?name=' + encodeURIComponent(data.fullName) + '&background=random');
+        try {
+            const response = await fetch(imageUrlToFetch);
+            const arrayBuffer = await response.arrayBuffer();
+            const buffer = Buffer.from(arrayBuffer);
+            profileImageUrl = await uploadToCloudinary(buffer, 'users');
+        } catch (error) {
+			throw new Error('Failed to process profile image');
+        }
+    }
+
+    const membershipPriceCode = await determineMembershipTier(email);
+    const passwordHash = await bcrypt.hash(data.password, 12);
+
+    const user = await db.withTransaction(async (client) => {
+        const savedUser = existingUser
+            ? await repository.updateUnverifiedUser({
+                email,
+                passwordHash,
+                fullName: data.fullName,
+                membershipPriceCode,
+                profileImageUrl,
+                phoneNumber: data.phoneNumber,
+                birthDate: data.birthDate,
+                isVerified: true,
+                googleId
+            }, client)
+            : await repository.createUser({
+                email,
+                passwordHash,
+                fullName: data.fullName,
+                membershipPriceCode,
+                profileImageUrl,
+                phoneNumber: data.phoneNumber,
+                birthDate: data.birthDate,
+                isVerified: true,
+                googleId
+            }, client);
+
+        if (activeVerification) {
+            await repository.consumeChallenge(activeVerification.id, client);
+        }
+
+        return savedUser;
+    });
+
+    const sessionId = crypto.randomUUID();
+    const accessToken = generateAccessToken(user.id, user.role, sessionId);
+    const refreshToken = generateRefreshToken(user.id, sessionId);
+    const refreshTokenHash = hashValue(refreshToken);
+
+    const { city, country } = await resolveLocation(ipAddress);
+    const deviceType = getDeviceType(userAgent);
+
+    await repository.createUserSession({
+        id: sessionId,
+        userId: user.id,
+        refreshTokenHash,
+        ipAddress,
+        city,
+        country,
+        deviceType,
+        userAgent
+    });
+
+    await repository.createAuthLog({ userId: user.id, email: user.email, ipAddress, userAgent, isSuccess: true, reason: 'Google Registration' });
+
+    return {
+        accessToken,
+        refreshToken,
+        user: {
+            id: user.id,
+            name: user.full_name,
+            role: user.role,
+            tier: user.tier,
+            membership: user.membership,
+        },
+    };
+};
+
+const loginGoogle = async (data, ipAddress, userAgent) => {
+    const payload = await verifyGoogleToken(data.googleToken);
+    const email = payload.email;
+    const googleId = payload.sub;
+
+    let user = await repository.findByEmail(email);
+    if (!user) {
+        await repository.createAuthLog({ userId: null, email, ipAddress, userAgent, isSuccess: false, reason: 'User not found for Google Login' });
+        throw createServiceError('Account not found. Please register first.', 404);
+    }
+
+    user = await db.withTransaction(async (client) => {
+        return await repository.linkGoogleAccount(email, googleId, client);
+    });
+
+    await repository.createAuthLog({ userId: user.id, email, ipAddress, userAgent, isSuccess: true, reason: 'Google Login Success' });
+
+    const sessionId = crypto.randomUUID();
+    const accessToken = generateAccessToken(user.id, user.role, sessionId);
+    const refreshToken = generateRefreshToken(user.id, sessionId);
+    const refreshTokenHash = hashValue(refreshToken);
+
+    const { city, country } = await resolveLocation(ipAddress);
+    const deviceType = getDeviceType(userAgent);
+
+    await repository.createUserSession({
+        id: sessionId,
+        userId: user.id,
+        refreshTokenHash,
+        ipAddress,
+        city,
+        country,
+        deviceType,
+        userAgent
+    });
+
+    return {
+        accessToken,
+        refreshToken,
+        user: {
+            id: user.id,
+            name: user.full_name,
+            role: user.role,
+            tier: user.tier,
+            membership: user.membership,
+        },
+    };
+};
+
 module.exports = {
     register,
     login,
@@ -491,4 +654,6 @@ module.exports = {
     resendPasswordResetOtp,
     resetPassword,
     resendVerificationEmail,
+    registerGoogle,
+    loginGoogle,
 };
