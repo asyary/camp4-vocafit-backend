@@ -12,8 +12,8 @@ const getAllUsers = async (limit, offset) => {
                 (
                     SELECT json_build_object(
                         'status', CASE WHEN m.end_date > NOW() THEN 'ACTIVE' ELSE 'EXPIRED' END,
-                        'endDate', m.end_date,
-                        'planCode', m.plan_code,
+                        'end_date', m.end_date,
+                        'plan_code', m.plan_code,
                         'type', m.type
                     )
                     FROM memberships m
@@ -54,8 +54,8 @@ const getUserById = async (id) => {
                 (
                     SELECT json_build_object(
                         'status', CASE WHEN m.end_date > NOW() THEN 'ACTIVE' ELSE 'EXPIRED' END,
-                        'endDate', m.end_date,
-                        'planCode', m.plan_code,
+                        'end_date', m.end_date,
+                        'plan_code', m.plan_code,
                         'type', m.type
                     )
                     FROM memberships m
@@ -129,8 +129,8 @@ const createUser = async (data) => {
                     (
                         SELECT json_build_object(
                             'status', CASE WHEN m.end_date > NOW() THEN 'ACTIVE' ELSE 'EXPIRED' END,
-                            'endDate', m.end_date,
-                            'planCode', m.plan_code,
+                            'end_date', m.end_date,
+                            'plan_code', m.plan_code,
                             'type', m.type
                         )
                         FROM memberships m
@@ -208,8 +208,8 @@ const updateUser = async (id, data) => {
                     (
                         SELECT json_build_object(
                             'status', CASE WHEN m.end_date > NOW() THEN 'ACTIVE' ELSE 'EXPIRED' END,
-                            'endDate', m.end_date,
-                            'planCode', m.plan_code,
+                            'end_date', m.end_date,
+                            'plan_code', m.plan_code,
                             'type', m.type
                         )
                         FROM memberships m
