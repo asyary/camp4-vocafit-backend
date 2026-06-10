@@ -9,14 +9,9 @@ const getMyProfile = async (userId) => {
 };
 
 const updateMyProfile = async (userId, data) => {
-    let passwordHash = undefined;
-    if (data.password) {
-        passwordHash = await bcrypt.hash(data.password, 10);
-    }
-    
     const updatedUser = await repository.updateProfile(userId, { 
         fullName: data.fullName, 
-        passwordHash 
+        phoneNumber: data.phoneNumber 
     });
     return withProfileImageThumb(updatedUser);
 };
@@ -27,4 +22,17 @@ const deleteMyAccount = async (userId) => {
     return invalidatedUser; // invalidateAccount returns id, email, full_name, role. No profile_image_url
 };
 
-module.exports = { getMyProfile, updateMyProfile, deleteMyAccount };
+const updateMyPassword = async (userId, currentPassword, newPassword) => {
+    const userPasswordHash = await repository.getUserPassword(userId);
+    if (!userPasswordHash) throw new Error('User not found');
+    
+    const isMatch = await bcrypt.compare(currentPassword, userPasswordHash);
+    if (!isMatch) {
+        throw new Error('Incorrect current password');
+    }
+
+    const newPasswordHash = await bcrypt.hash(newPassword, 12);
+    await repository.updatePassword(userId, newPasswordHash);
+};
+
+module.exports = { getMyProfile, updateMyProfile, deleteMyAccount, updateMyPassword };

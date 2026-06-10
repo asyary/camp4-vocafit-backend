@@ -36,12 +36,12 @@ const getUserProfile = async (id) => {
 };
 
 const updateProfile = async (id, data) => {
-    const { fullName, passwordHash } = data;
+    const { fullName, phoneNumber } = data;
     const { rows } = await db.query(
         `WITH updated AS (
             UPDATE users 
             SET full_name = COALESCE($1, full_name), 
-                password = COALESCE($2, password)
+                phone_number = COALESCE($2, phone_number)
             WHERE id = $3
               AND is_verified = TRUE
             RETURNING id, email, full_name, phone_number, date_of_birth, profile_image_url, role
@@ -70,7 +70,7 @@ const updateProfile = async (id, data) => {
          FROM updated
          LEFT JOIN user_account_tiers uat ON uat.user_id = updated.id
          LEFT JOIN pricing_account_tiers t ON t.code = uat.account_tier_code`,
-        [fullName, passwordHash, id]
+        [fullName, phoneNumber, id]
     );
     return rows[0];
 };
@@ -104,4 +104,21 @@ const invalidateAccount = async (id) => {
     });
 };
 
-module.exports = { getUserProfile, updateProfile, invalidateAccount };
+const getUserPassword = async (id) => {
+    const { rows } = await db.query(
+        `SELECT password FROM users WHERE id = $1 AND is_verified = TRUE`,
+        [id]
+    );
+    return rows[0]?.password;
+};
+
+const updatePassword = async (id, passwordHash) => {
+    await db.query(
+        `UPDATE users
+         SET password = $1, updated_at = NOW()
+         WHERE id = $2 AND is_verified = TRUE`,
+        [passwordHash, id]
+    );
+};
+
+module.exports = { getUserProfile, updateProfile, invalidateAccount, getUserPassword, updatePassword };

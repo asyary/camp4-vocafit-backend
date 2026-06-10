@@ -1,5 +1,5 @@
 const service = require('./user.service');
-const { updateProfileSchema } = require('./user.validation');
+const { updateProfileSchema, updatePasswordSchema } = require('./user.validation');
 const { clearTokens } = require('../../utils/cookie.util');
 
 const getMe = async (req, res, next) => {
@@ -31,4 +31,14 @@ const deleteMe = async (req, res, next) => {
     }
 };
 
-module.exports = { getMe, updateMe, deleteMe };
+const updatePassword = async (req, res, next) => {
+    try {
+        const parsedBody = updatePasswordSchema.parse(req.body);
+        await service.updateMyPassword(req.user.id, parsedBody.currentPassword, parsedBody.newPassword);
+        res.success(null, 'Password updated successfully');
+    } catch (err) {
+        next(err);
+    }
+};
+
+module.exports = { getMe, updateMe, deleteMe, updatePassword };
