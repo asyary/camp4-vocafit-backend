@@ -325,3 +325,33 @@ CREATE INDEX idx_user_notifications_user_feed
 
 CREATE INDEX idx_user_notifications_notification_id
     ON user_notifications (notification_id);
+
+-- Auth Security
+CREATE TABLE auth_logs (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+    email VARCHAR(255),
+    ip_address VARCHAR(45),
+    user_agent TEXT,
+    is_success BOOLEAN NOT NULL,
+    reason VARCHAR(255),
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TYPE device_type_enum AS ENUM ('Desktop', 'Mobile', 'Unknown');
+
+CREATE TABLE user_sessions (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+    refresh_token_hash VARCHAR(255) UNIQUE NOT NULL,
+    ip_address VARCHAR(45),
+    city VARCHAR(100),
+    country VARCHAR(100),
+    device_type device_type_enum,
+    user_agent TEXT,
+    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    last_active_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX idx_user_sessions_user_id ON user_sessions (user_id);
