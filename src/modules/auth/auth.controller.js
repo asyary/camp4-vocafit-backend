@@ -1,5 +1,5 @@
 const authService = require('./auth.service');
-const { registerSchema, loginSchema, forgotPasswordSchema, resetPasswordSchema, resendVerificationEmailSchema, registerGoogleSchema, loginGoogleSchema } = require('./auth.validation');
+const { registerSchema, loginSchema, forgotPasswordSchema, resetPasswordSchema, verifyOtpSchema, resendVerificationEmailSchema, registerGoogleSchema, loginGoogleSchema } = require('./auth.validation');
 const { setTokens, clearTokens } = require('../../utils/cookie.util');
 
 const register = async (req, res, next) => {
@@ -95,6 +95,16 @@ const resetPassword = async (req, res, next) => {
     }
 };
 
+const verifyOtp = async (req, res, next) => {
+    try {
+        const parsedBody = verifyOtpSchema.parse(req.body);
+        await authService.verifyOtp(parsedBody.email, parsedBody.otp);
+        res.success(null, 'OTP verified successfully.');
+    } catch (err) {
+        next(err);
+    }
+};
+
 const resendVerificationEmail = async (req, res, next) => {
     try {
         const parsedBody = resendVerificationEmailSchema.parse(req.body);
@@ -135,4 +145,4 @@ const loginGoogle = async (req, res, next) => {
     }
 };
 
-module.exports = { register, verifyEmail, login, logout, forgotPassword, resendForgotPasswordOtp, resetPassword, resendVerificationEmail, registerGoogle, loginGoogle };
+module.exports = { register, verifyEmail, login, logout, forgotPassword, resendForgotPasswordOtp, resetPassword, verifyOtp, resendVerificationEmail, registerGoogle, loginGoogle };

@@ -34,6 +34,11 @@ const resetPasswordSchema = z.object({
     newPassword: z.string().min(6, 'Password must be at least 6 characters long')
 });
 
+const verifyOtpSchema = z.object({
+    email: z.email(),
+    otp: z.string().length(6, 'OTP must be 6 digits').regex(/^\d{6}$/, 'OTP must contain only digits')
+});
+
 const resendVerificationEmailSchema = z.object({
     email: z.string().email(),
 });
@@ -58,4 +63,4 @@ const loginGoogleSchema = z.object({
     googleToken: z.string()
 });
 
-module.exports = { registerSchema, loginSchema, forgotPasswordSchema, resetPasswordSchema, resendVerificationEmailSchema, registerGoogleSchema, loginGoogleSchema };
+module.exports = { registerSchema, loginSchema, forgotPasswordSchema, resetPasswordSchema, verifyOtpSchema, resendVerificationEmailSchema, registerGoogleSchema, loginGoogleSchema };

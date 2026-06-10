@@ -13,6 +13,7 @@ router.post('/login/google', controller.loginGoogle);
 router.post('/logout', controller.logout);
 router.post('/forgot-password', controller.forgotPassword);
 router.post('/forgot-password/resend', controller.resendForgotPasswordOtp);
+router.post('/forgot-password/otp', controller.verifyOtp);
 router.post('/forgot-password/reset', controller.resetPassword);
 
 module.exports = router;
