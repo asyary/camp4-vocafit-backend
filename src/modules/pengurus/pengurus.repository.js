@@ -9,6 +9,18 @@ const getAllUsers = async (limit, offset) => {
                 u.date_of_birth,
                 u.profile_image_url,
                 u.role,
+                (
+                    SELECT json_build_object(
+                        'status', CASE WHEN m.end_date > NOW() THEN 'ACTIVE' ELSE 'EXPIRED' END,
+                        'endDate', m.end_date,
+                        'planCode', m.plan_code,
+                        'type', m.type
+                    )
+                    FROM memberships m
+                    WHERE m.user_id = u.id AND m.canceled_at IS NULL
+                    ORDER BY m.end_date DESC
+                    LIMIT 1
+                ) AS membership,
                 uat.account_tier_code AS membership_price_code,
                 t.name AS tier,
                 u.penalty_amount,
@@ -39,6 +51,18 @@ const getUserById = async (id) => {
                 u.profile_image_url,
                 u.role,
                 u.is_verified,
+                (
+                    SELECT json_build_object(
+                        'status', CASE WHEN m.end_date > NOW() THEN 'ACTIVE' ELSE 'EXPIRED' END,
+                        'endDate', m.end_date,
+                        'planCode', m.plan_code,
+                        'type', m.type
+                    )
+                    FROM memberships m
+                    WHERE m.user_id = u.id AND m.canceled_at IS NULL
+                    ORDER BY m.end_date DESC
+                    LIMIT 1
+                ) AS membership,
                 uat.account_tier_code AS membership_price_code,
                 t.name AS tier,
                 u.penalty_amount,
@@ -102,6 +126,18 @@ const createUser = async (data) => {
                     u.penalty_amount,
                     u.created_at,
                     u.updated_at,
+                    (
+                        SELECT json_build_object(
+                            'status', CASE WHEN m.end_date > NOW() THEN 'ACTIVE' ELSE 'EXPIRED' END,
+                            'endDate', m.end_date,
+                            'planCode', m.plan_code,
+                            'type', m.type
+                        )
+                        FROM memberships m
+                        WHERE m.user_id = u.id AND m.canceled_at IS NULL
+                        ORDER BY m.end_date DESC
+                        LIMIT 1
+                    ) AS membership,
                     uat.account_tier_code AS membership_price_code,
                     t.name AS tier
              FROM users u
@@ -169,6 +205,18 @@ const updateUser = async (id, data) => {
                     u.penalty_amount,
                     u.created_at,
                     u.updated_at,
+                    (
+                        SELECT json_build_object(
+                            'status', CASE WHEN m.end_date > NOW() THEN 'ACTIVE' ELSE 'EXPIRED' END,
+                            'endDate', m.end_date,
+                            'planCode', m.plan_code,
+                            'type', m.type
+                        )
+                        FROM memberships m
+                        WHERE m.user_id = u.id AND m.canceled_at IS NULL
+                        ORDER BY m.end_date DESC
+                        LIMIT 1
+                    ) AS membership,
                     uat.account_tier_code AS membership_price_code,
                     t.name AS tier
              FROM users u
