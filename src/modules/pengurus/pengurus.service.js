@@ -1,7 +1,7 @@
 const repository = require('./pengurus.repository');
 const cloudinary = require('../../config/cloudinary');
 const bcrypt = require('bcrypt');
-const { withProfileImageThumb } = require('../../utils/image.util');
+const { withProfileImageThumb, replaceWithImageThumb } = require('../../utils/image.util');
 
 const uploadToCloudinary = (fileBuffer, folder) => {
     return new Promise((resolve, reject) => {
@@ -14,6 +14,37 @@ const uploadToCloudinary = (fileBuffer, folder) => {
         );
         stream.end(fileBuffer);
     });
+};
+
+const getDashboardMetrics = async () => {
+    const counts = await repository.getDashboardCounts();
+    const transactionsChart = await repository.getTransactionsLast30Days();
+    const latestActivitiesRaw = await repository.getLatestActivitiesToday();
+    const latestTransactionsRaw = await repository.getLatestTransactions(5);
+    const topTrainersRaw = await repository.getTopTrainers(3);
+
+    const latest_activities = latestActivitiesRaw.map(activity => {
+        if (!activity.thumbnail_url) return activity;
+        return replaceWithImageThumb(activity, 'thumbnail_url', 'c_thumb,w_50,h_50,g_face');
+    });
+
+    const latest_transactions = latestTransactionsRaw.map(tx => {
+        if (!tx.thumbnail_url) return tx;
+        return replaceWithImageThumb(tx, 'thumbnail_url', 'c_thumb,w_50,h_50,g_face');
+    });
+
+    const top_trainers = topTrainersRaw.map(trainer => {
+        if (!trainer.image_url) return trainer;
+        return replaceWithImageThumb(trainer, 'image_url', 'c_thumb,w_50,h_50,g_face');
+    });
+
+    return {
+        counts,
+        transactions_chart: transactionsChart,
+        latest_activities,
+        latest_transactions,
+        top_trainers
+    };
 };
 
 const getUsersList = async (page, limit) => {
@@ -83,5 +114,5 @@ const removeUser = async (id) => {
 };
 
 module.exports = {
-    getUsersList, getUserById, addUser, editUser, removeUser
+    getDashboardMetrics, getUsersList, getUserById, addUser, editUser, removeUser
 };

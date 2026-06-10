@@ -259,6 +259,106 @@ const invalidateUser = async (id) => {
     });
 };
 
+const getDashboardCounts = async () => {
+    const { rows: userRow } = await db.query(`SELECT COUNT(*) FROM users`);
+    const { rows: newsRow } = await db.query(`SELECT COUNT(*) FROM news`);
+    const { rows: trainerRow } = await db.query(`SELECT COUNT(*) FROM trainers WHERE is_active = TRUE`);
+    
+    const { rows: memberRows } = await db.query(`
+        SELECT 
+            COUNT(*) FILTER (WHERE has_membership = TRUE) as with_membership,
+            COUNT(*) FILTER (WHERE has_membership = FALSE) as without_membership
+        FROM (
+            SELECT u.id, EXISTS (
+                SELECT 1 FROM memberships m WHERE m.user_id = u.id AND m.end_date > NOW() AND m.canceled_at IS NULL
+            ) as has_membership
+            FROM users u
+            WHERE u.role = 'member' AND u.is_verified = TRUE
+        ) as sub
+    `);
+
+    return {
+        total_users: parseInt(userRow[0].count, 10),
+        total_news: parseInt(newsRow[0].count, 10),
+        total_trainers: parseInt(trainerRow[0].count, 10),
+        active_members_with_membership: parseInt(memberRows[0].with_membership, 10),
+        active_members_without_membership: parseInt(memberRows[0].without_membership, 10)
+    };
+};
+
+const getTransactionsLast30Days = async () => {
+    const { rows } = await db.query(`
+        SELECT DATE(created_at) as date, SUM(amount) as total_amount
+        FROM transactions
+        WHERE status = 'SUCCESS' AND created_at >= NOW() - INTERVAL '30 days'
+        GROUP BY DATE(created_at)
+        ORDER BY date ASC
+    `);
+    return rows;
+};
+
+const getLatestActivitiesToday = async () => {
+    const { rows } = await db.query(`
+        SELECT 'transaction' AS type, t.created_at AS time, u.full_name AS name, u.profile_image_url AS thumbnail_url, t.amount AS amount
+        FROM transactions t
+        JOIN users u ON u.id = t.user_id
+        WHERE t.status = 'SUCCESS' AND DATE(t.created_at) = CURRENT_DATE
+
+        UNION ALL
+
+        SELECT 'tap-in' AS type, v.tap_in_time AS time, u.full_name AS name, u.profile_image_url AS thumbnail_url, NULL AS amount
+        FROM gym_visits v
+        JOIN users u ON u.id = v.user_id
+        WHERE DATE(v.tap_in_time) = CURRENT_DATE
+
+        UNION ALL
+
+        SELECT 'tap-out' AS type, v.tap_out_time AS time, u.full_name AS name, u.profile_image_url AS thumbnail_url, NULL AS amount
+        FROM gym_visits v
+        JOIN users u ON u.id = v.user_id
+        WHERE v.tap_out_time IS NOT NULL AND DATE(v.tap_out_time) = CURRENT_DATE
+
+        UNION ALL
+
+        SELECT 'registration' AS type, u.created_at AS time, u.full_name AS name, u.profile_image_url AS thumbnail_url, NULL AS amount
+        FROM users u
+        WHERE DATE(u.created_at) = CURRENT_DATE AND u.is_verified = TRUE
+
+        ORDER BY time DESC
+    `);
+    return rows;
+};
+
+const getLatestTransactions = async (limit) => {
+    const { rows } = await db.query(`
+        SELECT t.id, t.created_at AS time, u.full_name AS name, u.profile_image_url AS thumbnail_url, t.amount AS amount
+        FROM transactions t
+        JOIN users u ON u.id = t.user_id
+        WHERE t.status = 'SUCCESS'
+        ORDER BY t.created_at DESC
+        LIMIT $1
+    `, [limit]);
+    return rows;
+};
+
+const getTopTrainers = async (limit) => {
+    const { rows } = await db.query(`
+        SELECT 
+            t.id, 
+            t.name, 
+            t.image_url, 
+            COUNT(tp.id)::int as total_booking
+        FROM trainers t
+        LEFT JOIN trainer_packages tp ON t.id = tp.trainer_id AND tp.status != 'CANCELED'
+        WHERE t.is_active = TRUE
+        GROUP BY t.id, t.name, t.image_url
+        ORDER BY total_booking DESC
+        LIMIT $1
+    `, [limit]);
+    return rows;
+};
+
 module.exports = {
-    getAllUsers, getUserById, createUser, updateUser, invalidateUser, countAllUsers
+    getAllUsers, getUserById, createUser, updateUser, invalidateUser, countAllUsers,
+    getDashboardCounts, getTransactionsLast30Days, getLatestActivitiesToday, getLatestTransactions, getTopTrainers
 };

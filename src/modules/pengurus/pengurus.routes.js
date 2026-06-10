@@ -8,6 +8,7 @@ const router = express.Router();
 router.use(requireAuth);
 router.use(requireRole('pengurus'));
 
+router.get('/metrics', controller.getMetrics);
 router.get('/users', controller.getUsers);
 router.get('/users/:id', controller.getUser);
 router.post('/users', upload.single('image'), controller.createUser);

@@ -2,6 +2,15 @@ const service = require('./pengurus.service');
 const { createUserSchema, updateUserSchema, imageSchema } = require('./pengurus.validation');
 const { paginationSchema } = require('../../utils/validation.util');
 
+const getMetrics = async (req, res, next) => {
+    try {
+        const metrics = await service.getDashboardMetrics();
+        res.success(metrics, 'Dashboard metrics retrieved successfully');
+    } catch (err) {
+        next(err);
+    }
+};
+
 const getUsers = async (req, res, next) => {
     try {
         const { page, limit } = paginationSchema.parse(req.query);
@@ -57,5 +66,5 @@ const deleteUser = async (req, res, next) => {
 };
 
 module.exports = {
-    getUsers, getUser, createUser, updateUser, deleteUser
+    getMetrics, getUsers, getUser, createUser, updateUser, deleteUser
 };
