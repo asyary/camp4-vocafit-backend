@@ -12,15 +12,16 @@ const requireAuth = async (req, res, next) => {
     try {
         const decoded = verifyAccessToken(token);
         const { rows } = await db.query(
-            `SELECT id, email, full_name, role, is_verified
-             FROM users
-             WHERE id = $1
-               AND is_verified = TRUE`,
-            [decoded.id]
+            `SELECT u.id, u.email, u.full_name, u.role, u.is_verified, s.is_active as session_active
+             FROM users u
+             LEFT JOIN user_sessions s ON s.id = $2
+             WHERE u.id = $1
+               AND u.is_verified = TRUE`,
+            [decoded.id, decoded.sessionId]
         );
 
         const user = rows[0];
-        if (!user || !user.is_verified) {
+        if (!user || !user.is_verified || user.session_active === false) {
             const err = new Error('Invalid or expired token');
             err.status = 401;
             return next(err);
