@@ -41,4 +41,33 @@ const updatePassword = async (req, res, next) => {
     }
 };
 
-module.exports = { getMe, updateMe, deleteMe, updatePassword };
+const getMySessions = async (req, res, next) => {
+    try {
+        const { verifyAccessToken } = require('../../utils/jwt.util');
+        const token = req.cookies.access_token;
+        let currentSessionId = null;
+        if (token) {
+            try {
+                const decoded = verifyAccessToken(token);
+                currentSessionId = decoded.sessionId;
+            } catch (err) {}
+        }
+
+        const sessions = await service.getMySessions(req.user.id, currentSessionId);
+        res.success(sessions, 'Sessions retrieved successfully');
+    } catch (err) {
+        next(err);
+    }
+};
+
+const revokeMySession = async (req, res, next) => {
+    try {
+        const { sessionId } = req.params;
+        await service.revokeMySession(req.user.id, sessionId);
+        res.success(null, 'Session revoked successfully');
+    } catch (err) {
+        next(err);
+    }
+};
+
+module.exports = { getMe, updateMe, deleteMe, updatePassword, getMySessions, revokeMySession };

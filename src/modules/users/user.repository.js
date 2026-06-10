@@ -121,4 +121,26 @@ const updatePassword = async (id, passwordHash) => {
     );
 };
 
-module.exports = { getUserProfile, updateProfile, invalidateAccount, getUserPassword, updatePassword };
+const getActiveSessions = async (userId) => {
+    const { rows } = await db.query(
+        `SELECT id, ip_address, city, country, device_type, user_agent, created_at, last_active_at
+         FROM user_sessions
+         WHERE user_id = $1 AND is_active = TRUE
+         ORDER BY last_active_at DESC`,
+        [userId]
+    );
+    return rows;
+};
+
+const revokeSession = async (userId, sessionId) => {
+    const { rows } = await db.query(
+        `UPDATE user_sessions
+         SET is_active = FALSE
+         WHERE id = $1 AND user_id = $2
+         RETURNING *`,
+        [sessionId, userId]
+    );
+    return rows[0];
+};
+
+module.exports = { getUserProfile, updateProfile, invalidateAccount, getUserPassword, updatePassword, getActiveSessions, revokeSession };

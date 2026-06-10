@@ -2,11 +2,8 @@ const bcrypt = require('bcrypt');
 const crypto = require('crypto');
 const db = require('../../config/db');
 const repository = require('./auth.repository');
-const {
-    queueVerificationEmail,
-    queuePasswordResetOtpEmail,
-} = require('../../utils/email-queue.util');
-const { generateAccessToken, generateRefreshToken } = require('../../utils/jwt.util');
+const { queueVerificationEmail, queuePasswordResetOtpEmail } = require('../../utils/email-queue.util');
+const { generateAccessToken, generateRefreshToken, verifyAccessToken } = require('../../utils/jwt.util');
 const { uploadToCloudinary } = require('../../utils/cloudinary.util');
 
 const CHALLENGE_TYPES = {
@@ -25,6 +22,25 @@ const MEMBERSHIP_TIER_CODES = {
 };
 
 const hashValue = (value) => crypto.createHash('sha256').update(value).digest('hex');
+
+const resolveLocation = async (ipAddress) => {
+    try {
+        if (!ipAddress || ipAddress === '127.0.0.1' || ipAddress === '::1') return { city: 'localhost', country: 'localhost' };
+        const response = await fetch(`http://ip-api.com/json/${ipAddress}`);
+        const data = await response.json();
+        if (data.status === 'success') {
+            return { city: data.city, country: data.country };
+        }
+    } catch (err) {
+        console.error('Failed to resolve IP location', err);
+    }
+    return { city: 'Unknown', country: 'Unknown' };
+};
+
+const getDeviceType = (userAgent) => {
+    if (!userAgent) return 'Unknown';
+    return /mobile|android|iphone|ipad|phone/i.test(userAgent) ? 'Mobile' : 'Desktop';
+};
 
 const generateVerificationToken = () => crypto.randomBytes(32).toString('hex');
 
@@ -56,7 +72,7 @@ const getExpiryIso = (challenge) => {
 };
 
 const buildChallengePayload = (challengeType, challenge) => ({
-    challenge_type: challengeType,
+    error_code: challengeType,
     expires_at: getExpiryIso(challenge),
     retry_in_ms: getRetryDelayMs(challenge),
 });
@@ -166,24 +182,83 @@ const register = async (data, fileBuffer) => {
     return true;
 };
 
-const login = async (data) => {
+const login = async (data, ipAddress, userAgent) => {
+    const recentFails = await repository.getRecentFailedLogins(data.email, ipAddress);
+    if (recentFails.length >= 3) {
+        const lastFailedAt = new Date(recentFails[0].created_at).getTime();
+        const threeMinutesInMs = 3 * 60 * 1000;
+        const timeSinceLastFailure = Date.now() - lastFailedAt;
+        if (timeSinceLastFailure < threeMinutesInMs) {
+            throw createServiceError('Too many failed login attempts. Please try again later.', 429, {
+                challenge_type: 'LOGIN_COOLDOWN',
+                expires_at: new Date(lastFailedAt + threeMinutesInMs).toISOString(),
+                retry_in_ms: threeMinutesInMs - timeSinceLastFailure
+            });
+        }
+    }
+
     const user = await repository.findByEmail(data.email);
-    if (!user) throw new Error('Invalid credentials');
+    if (!user) {
+        await repository.createAuthLog({ userId: null, email: data.email, ipAddress, userAgent, isSuccess: false, reason: 'User not found' });
+        
+        if (recentFails.length + 1 >= 3) {
+            throw createServiceError('Too many failed login attempts. Please try again later.', 429, {
+                challenge_type: 'LOGIN_COOLDOWN',
+                expires_at: new Date(Date.now() + 3 * 60 * 1000).toISOString(),
+                retry_in_ms: 3 * 60 * 1000
+            });
+        }
+        throw new Error('Invalid credentials');
+    }
 
     if (!user.is_verified) {
         const activeVerification = await repository.getActiveChallenge(data.email, CHALLENGE_TYPES.EMAIL_VERIFICATION);
+        await repository.createAuthLog({ userId: user.id, email: data.email, ipAddress, userAgent, isSuccess: false, reason: 'Account not verified' });
         if (activeVerification) {
-            throw new Error('Verification is still active. Please check your email.');
+            throw createServiceError(
+                'Verification is still active. Please check your email.',
+                403,
+                buildChallengePayload(CHALLENGE_TYPES.EMAIL_VERIFICATION, activeVerification)
+            );
         }
 
         throw new Error('Account is inactive');
     }
 
     const validPassword = await bcrypt.compare(data.password, user.password);
-    if (!validPassword) throw new Error('Invalid credentials');
+    if (!validPassword) {
+        await repository.createAuthLog({ userId: user.id, email: data.email, ipAddress, userAgent, isSuccess: false, reason: 'Invalid password' });
+        
+        if (recentFails.length + 1 >= 3) {
+            throw createServiceError('Too many failed login attempts. Please try again later.', 429, {
+                challenge_type: 'LOGIN_COOLDOWN',
+                expires_at: new Date(Date.now() + 3 * 60 * 1000).toISOString(),
+                retry_in_ms: 3 * 60 * 1000
+            });
+        }
+        throw new Error('Invalid credentials');
+    }
+    
+    await repository.createAuthLog({ userId: user.id, email: data.email, ipAddress, userAgent, isSuccess: true, reason: 'Success' });
 
-    const accessToken = generateAccessToken(user.id, user.role);
-    const refreshToken = generateRefreshToken(user.id);
+    const sessionId = crypto.randomUUID();
+    const accessToken = generateAccessToken(user.id, user.role, sessionId);
+    const refreshToken = generateRefreshToken(user.id, sessionId);
+    const refreshTokenHash = hashValue(refreshToken);
+
+    const { city, country } = await resolveLocation(ipAddress);
+    const deviceType = getDeviceType(userAgent);
+
+    await repository.createUserSession({
+        id: sessionId,
+        userId: user.id,
+        refreshTokenHash,
+        ipAddress,
+        city,
+        country,
+        deviceType,
+        userAgent
+    });
 
     return {
         accessToken,
@@ -198,7 +273,7 @@ const login = async (data) => {
     };
 };
 
-const verifyUser = async (token) => {
+const verifyUser = async (token, ipAddress, userAgent) => {
     const tokenHash = hashValue(token);
     const challenge = await repository.getVerificationChallengeByTokenHash(tokenHash);
 
@@ -214,8 +289,26 @@ const verifyUser = async (token) => {
 
     if (!verifiedUser) return null;
 
-    const accessToken = generateAccessToken(verifiedUser.id, verifiedUser.role);
-    const refreshToken = generateRefreshToken(verifiedUser.id);
+    const sessionId = crypto.randomUUID();
+    const accessToken = generateAccessToken(verifiedUser.id, verifiedUser.role, sessionId);
+    const refreshToken = generateRefreshToken(verifiedUser.id, sessionId);
+    const refreshTokenHash = hashValue(refreshToken);
+
+    const { city, country } = await resolveLocation(ipAddress);
+    const deviceType = getDeviceType(userAgent);
+
+    await repository.createUserSession({
+        id: sessionId,
+        userId: verifiedUser.id,
+        refreshTokenHash,
+        ipAddress,
+        city,
+        country,
+        deviceType,
+        userAgent
+    });
+
+    await repository.createAuthLog({ userId: verifiedUser.id, email: verifiedUser.email, ipAddress, userAgent, isSuccess: true, reason: 'Email Verification Login' });
 
     return {
         accessToken,
@@ -279,7 +372,11 @@ const resendPasswordResetOtp = async (email) => {
     }
 
     if (challenge.next_resend_at && new Date(challenge.next_resend_at) > new Date()) {
-        throw new Error('Please wait before requesting the OTP again');
+        throw createServiceError(
+            'Please wait before requesting the OTP again',
+            429,
+            buildChallengePayload(CHALLENGE_TYPES.PASSWORD_RESET, challenge)
+        );
     }
 
     const otp = generateOtpCode();
@@ -315,6 +412,7 @@ const resetPassword = async (email, otp, newPassword) => {
     await db.withTransaction(async (client) => {
         await repository.updatePasswordHashByEmail(email, passwordHash, client);
         await repository.consumeChallenge(challenge.id, client);
+        await repository.invalidateAllUserSessions(challenge.user_id, client);
     });
     return true;
 };
@@ -354,7 +452,11 @@ const resendVerificationEmail = async (email) => {
     }
 
     if (challenge.next_resend_at && new Date(challenge.next_resend_at) > new Date()) {
-        throw new Error('Please wait before requesting the verification email again.');
+        throw createServiceError(
+            'Please wait before requesting the verification email again.',
+            429,
+            buildChallengePayload(CHALLENGE_TYPES.EMAIL_VERIFICATION, challenge)
+        );
     }
 
     const verificationToken = generateVerificationToken();
@@ -368,9 +470,22 @@ const resendVerificationEmail = async (email) => {
     return true;
 };
 
+const logout = async (token) => {
+    if (!token) return;
+    try {
+        const decoded = verifyAccessToken(token);
+        if (decoded.sessionId) {
+            await repository.invalidateSession(decoded.sessionId);
+        }
+    } catch (err) {
+        // Ignore invalid tokens on logout
+    }
+};
+
 module.exports = {
     register,
     login,
+    logout,
     verifyUser,
     requestPasswordReset,
     resendPasswordResetOtp,

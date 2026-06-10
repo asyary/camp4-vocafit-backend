@@ -18,13 +18,15 @@ const register = async (req, res, next) => {
 const verifyEmail = async (req, res, next) => {
     try {
         const { token } = req.params;
+        const ipAddress = req.ip || req.connection.remoteAddress;
+        const userAgent = req.headers['user-agent'];
         if (!token) {
 			const err = new Error('Token is required');
 			err.status = 400;
 			return next(err);
 		};
         
-        const result = await authService.verifyUser(token);
+        const result = await authService.verifyUser(token, ipAddress, userAgent);
         if (!result) {
 			const err = new Error('Invalid or expired token');
 			err.status = 404;
@@ -41,7 +43,9 @@ const verifyEmail = async (req, res, next) => {
 const login = async (req, res, next) => {
     try {
         const parsedBody = loginSchema.parse(req.body);
-        const { accessToken, refreshToken, user } = await authService.login(parsedBody);
+        const ipAddress = req.ip || req.connection.remoteAddress;
+        const userAgent = req.headers['user-agent'];
+        const { accessToken, refreshToken, user } = await authService.login(parsedBody, ipAddress, userAgent);
         
         setTokens(res, accessToken, refreshToken);
         res.success(user, 'Login successful', 200);
@@ -50,9 +54,15 @@ const login = async (req, res, next) => {
     }
 };
 
-const logout = (req, res, next) => {
-    clearTokens(res);
-    res.success(null, 'Logged out successfully');
+const logout = async (req, res, next) => {
+    try {
+        const token = req.cookies.access_token;
+        await authService.logout(token);
+        clearTokens(res);
+        res.success(null, 'Logged out successfully');
+    } catch (err) {
+        next(err);
+    }
 };
 
 const forgotPassword = async (req, res, next) => {
