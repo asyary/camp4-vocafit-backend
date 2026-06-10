@@ -44,6 +44,7 @@ CREATE TABLE users (
     is_verified BOOLEAN DEFAULT FALSE,
     penalty_amount NUMERIC(10, 2) DEFAULT 0, -- Stacks 5k for missed tap-outs
 	profile_image_url VARCHAR(255) NOT NULL,
+    google_id VARCHAR(255) UNIQUE,
     verified_at TIMESTAMP WITH TIME ZONE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
