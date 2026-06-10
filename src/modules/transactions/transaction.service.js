@@ -257,11 +257,17 @@ const cancelTransaction = async (userId, role, transactionId) => {
         try {
             await snap.transaction.cancel(transaction.order_id);
         } catch (error) {
-            const err = new Error('Failed to cancel Midtrans transaction');
             const parsedStatus = Number.parseInt(error?.httpStatusCode, 10);
-            err.status = Number.isInteger(parsedStatus) ? parsedStatus : 502;
-            err.data = error?.ApiResponse || null;
-            throw err;
+            if (parsedStatus === 404 || error?.ApiResponse?.status_code === '404') {
+                const err = new Error('You need to pick a payment method before canceling');
+                err.status = 400;
+                throw err;
+            } else {
+                const err = new Error('Failed to cancel Midtrans transaction');
+                err.status = Number.isInteger(parsedStatus) ? parsedStatus : 502;
+                err.data = error?.ApiResponse || null;
+                throw err;
+            }
         }
     }
 
