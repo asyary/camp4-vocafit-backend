@@ -28,6 +28,7 @@ const { initSocket } = require('./config/socket');
 const { startEmailQueueWorker } = require('./utils/email-queue.util');
 
 const app = express();
+app.set('trust proxy', ['loopback', '100.64.0.0/10']);
 const server = http.createServer(app);
 
 app.use(responseHandler);
