@@ -27,8 +27,16 @@ const hashValue = (value) => crypto.createHash('sha256').update(value).digest('h
 
 const resolveLocation = async (ipAddress) => {
     try {
-        if (!ipAddress || ipAddress === '127.0.0.1' || ipAddress === '::1') return { city: 'localhost', country: 'localhost' };
-        const response = await fetch(`http://ip-api.com/json/${ipAddress}`);
+        if (!ipAddress) return { city: 'Unknown', country: 'Unknown' };
+
+        let cleanIp = ipAddress.split(',')[0].trim();
+        if (cleanIp.startsWith('::ffff:')) {
+            cleanIp = cleanIp.replace('::ffff:', '');
+        }
+
+        if (cleanIp === '127.0.0.1' || cleanIp === '::1') return { city: 'localhost', country: 'localhost' };
+
+        const response = await fetch(`http://ip-api.com/json/${cleanIp}`);
         const data = await response.json();
         if (data.status === 'success') {
             return { city: data.city, country: data.country };
