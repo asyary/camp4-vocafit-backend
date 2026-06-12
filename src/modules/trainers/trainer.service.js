@@ -11,7 +11,9 @@ const addTrainer = async (data, fileBuffer) => {
     let imageUrl = null;
     if (fileBuffer) {
         imageUrl = await uploadToCloudinary(fileBuffer, 'trainers');
-    }
+    } else {
+		throw createError('Trainer image is required', 400);
+	}
 
     return await repository.createTrainer({ ...data, imageUrl });
 };
