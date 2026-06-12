@@ -18,8 +18,6 @@ router.get('/:transactionId', controller.getTransactionDetails);
 
 router.use(requireRole('pengurus'));
 
-// Cash handling
-router.get('/cash/pending', controller.getPendingCash);
-router.post('/cash/confirm', controller.confirmCash);
+router.post('/confirm', controller.confirmCash);
 
 module.exports = router;

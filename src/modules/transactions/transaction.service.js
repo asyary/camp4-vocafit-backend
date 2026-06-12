@@ -4,6 +4,7 @@ const repository = require('./transaction.repository');
 const crypto = require('crypto');
 const { queueOrderInvoiceEmail, queuePaymentReceiptEmail } = require('../../utils/email-queue.util');
 const { sendTransactionNotification } = require('../notifications/notifications.service');
+const { withProfileImageThumb } = require('../../utils/image.util');
 
 const MIDTRANS_SUCCESS_STATUSES = new Set(['capture', 'settlement']);
 const MIDTRANS_FAILURE_STATUSES = new Set(['deny', 'expire', 'cancel']);
@@ -195,25 +196,14 @@ const createPayment = async (userId, payload) => {
     return transaction;
 };
 
-const getCashPayments = async (page, limit) => {
-    const offset = (page - 1) * limit;
-    const { rows, totalCount } = await repository.getPendingCashTransactions({ limit, offset });
-    return {
-        page,
-        limit,
-        total_pages: Math.ceil(totalCount / limit),
-        total_data: totalCount,
-        data: rows
-    };
-};
-
-const getTransactionHistory = async (userId, role, page, limit) => {
+const getTransactionHistory = async (userId, role, page, limit, filters = {}) => {
     const offset = (page - 1) * limit;
     const { rows, totalCount } = await repository.getTransactionsHistory({
         userId,
         isPengurus: role === 'pengurus',
         limit,
-        offset
+        offset,
+        filters
     });
 
     return {
@@ -221,7 +211,10 @@ const getTransactionHistory = async (userId, role, page, limit) => {
         limit,
         total_pages: Math.ceil(totalCount / limit),
         total_data: totalCount,
-        data: rows
+        data: rows.map(row => {
+            if (!row.user) return row;
+            return { ...row, user: withProfileImageThumb(row.user) };
+        })
     };
 };
 
@@ -234,6 +227,10 @@ const getTransactionDetails = async (userId, role, transactionId) => {
         const err = new Error('Transaction not found');
         err.status = 404;
         throw err;
+    }
+
+    if (transaction.user) {
+        transaction.user = withProfileImageThumb(transaction.user);
     }
 
     return transaction;
@@ -474,7 +471,6 @@ const handleMidtransWebhook = async (notificationPayload) => {
 
 module.exports = {
 	createPayment,
-	getCashPayments,
     getTransactionHistory,
     getTransactionDetails,
     cancelTransaction,

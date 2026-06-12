@@ -221,53 +221,6 @@ const isMembershipTransaction = (transaction) => (
 
 const isTrainerTransaction = (transaction) => transaction?.transaction_family === 'PERSONAL_TRAINER';
 
-const getPendingCashTransactions = async ({ limit, offset }) => {
-    // Only fetch cash transactions that haven't expired yet
-    const baseCondition = `
-        FROM transactions t
-        JOIN pricing_catalog c ON c.code = t.catalog_code
-        LEFT JOIN users u ON u.id = t.user_id
-        WHERE t.payment_method = 'CASH'
-        AND t.status = 'PENDING'
-        AND t.expire_at > NOW()`;
-
-    const [{ rows }, { rows: countRows }] = await Promise.all([
-        db.query(
-            `SELECT 
-                t.id,
-                t.user_id,
-                json_build_object(
-                    'name', u.full_name,
-                    'email', u.email,
-                    'profile_image_url', u.profile_image_url
-                ) AS "user",
-                t.amount,
-                t.payment_method,
-                t.status,
-                t.penalty_amount,
-                t.catalog_code AS transaction_type,
-                c.family AS transaction_family,
-                c.name AS catalog_name,
-                t.account_tier_code,
-                t.trainer_id,
-                t.trainer_participant_emails,
-                t.trainer_group_size,
-                t.order_id,
-                t.payment_url,
-                t.expire_at,
-                t.created_at,
-                t.settled_at
-             ${baseCondition}
-             ORDER BY t.created_at ASC
-             LIMIT $1 OFFSET $2`,
-            [limit, offset]
-        ),
-        db.query(`SELECT COUNT(*)::int AS total ${baseCondition}`)
-    ]);
-
-    return { rows, totalCount: countRows[0].total };
-};
-
 const updateTransactionExpiry = async (transactionId, expireAt) => {
 	const { rows } = await db.query(
 		'UPDATE transactions SET expire_at = $1 WHERE id = $2 RETURNING id',
@@ -364,7 +317,30 @@ const getCashTransactionById = async (transactionId) => {
 
 const getTransactionById = async (transactionId) => {
     const { rows } = await db.query(
-        `SELECT ${TRANSACTION_SELECT_FIELDS}
+        `SELECT
+            t.id,
+            t.user_id,
+            json_build_object(
+                'name', u.full_name,
+                'email', u.email,
+                'profile_image_url', u.profile_image_url
+            ) AS "user",
+            t.amount,
+            t.payment_method,
+            t.status,
+            t.penalty_amount,
+            t.catalog_code AS transaction_type,
+            c.family AS transaction_family,
+            c.name AS catalog_name,
+            t.account_tier_code,
+            t.trainer_id,
+            t.trainer_participant_emails,
+            t.trainer_group_size,
+            t.order_id,
+            t.payment_url,
+            t.expire_at,
+            t.created_at,
+            t.settled_at
          FROM transactions t
          JOIN pricing_catalog c ON c.code = t.catalog_code
          LEFT JOIN users u ON u.id = t.user_id
@@ -377,27 +353,90 @@ const getTransactionById = async (transactionId) => {
 
 const getTransactionByIdForUser = async (transactionId, userId) => {
     const { rows } = await db.query(
-                `SELECT ${TRANSACTION_SELECT_FIELDS}
-                 FROM transactions t
-                 JOIN pricing_catalog c ON c.code = t.catalog_code
-                 LEFT JOIN users u ON u.id = t.user_id
-                 WHERE t.id = $1
-                     AND t.user_id = $2`,
+        `SELECT
+            t.id,
+            t.user_id,
+            json_build_object(
+                'name', u.full_name,
+                'email', u.email,
+                'profile_image_url', u.profile_image_url
+            ) AS "user",
+            t.amount,
+            t.payment_method,
+            t.status,
+            t.penalty_amount,
+            t.catalog_code AS transaction_type,
+            c.family AS transaction_family,
+            c.name AS catalog_name,
+            t.account_tier_code,
+            t.trainer_id,
+            t.trainer_participant_emails,
+            t.trainer_group_size,
+            t.order_id,
+            t.payment_url,
+            t.expire_at,
+            t.created_at,
+            t.settled_at
+         FROM transactions t
+         JOIN pricing_catalog c ON c.code = t.catalog_code
+         LEFT JOIN users u ON u.id = t.user_id
+         WHERE t.id = $1
+           AND t.user_id = $2`,
         [transactionId, userId]
     );
 
     return rows[0];
 };
 
-const getTransactionsHistory = async ({ userId, isPengurus, limit, offset }) => {
-    const whereClause = isPengurus ? '' : 'WHERE t.user_id = $1';
-    const baseParams = isPengurus ? [] : [userId];
+const getTransactionsHistory = async ({ userId, isPengurus, limit, offset, filters = {} }) => {
+    const conditions = [];
+    const baseParams = [];
+
+    if (!isPengurus) {
+        baseParams.push(userId);
+        conditions.push(`t.user_id = $${baseParams.length}`);
+    }
+
+    if (filters.method) {
+        baseParams.push(filters.method);
+        conditions.push(`t.payment_method = $${baseParams.length}`);
+    }
+
+    if (filters.status) {
+        baseParams.push(filters.status);
+        conditions.push(`t.status = $${baseParams.length}`);
+    }
+
+    const whereClause = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
     const limitParamIndex = baseParams.length + 1;
     const offsetParamIndex = baseParams.length + 2;
 
     const [dataResult, countResult] = await Promise.all([
         db.query(
-            `SELECT ${TRANSACTION_SELECT_FIELDS}
+            `SELECT
+                t.id,
+                t.user_id,
+                json_build_object(
+                    'name', u.full_name,
+                    'email', u.email,
+                    'profile_image_url', u.profile_image_url
+                ) AS "user",
+                t.amount,
+                t.payment_method,
+                t.status,
+                t.penalty_amount,
+                t.catalog_code AS transaction_type,
+                c.family AS transaction_family,
+                c.name AS catalog_name,
+                t.account_tier_code,
+                t.trainer_id,
+                t.trainer_participant_emails,
+                t.trainer_group_size,
+                t.order_id,
+                t.payment_url,
+                t.expire_at,
+                t.created_at,
+                t.settled_at
              FROM transactions t
              JOIN pricing_catalog c ON c.code = t.catalog_code
              LEFT JOIN users u ON u.id = t.user_id
@@ -606,7 +645,6 @@ module.exports = {
     getPricingCatalogItem,
     getPricingCatalogPrice,
     createTransaction, 
-    getPendingCashTransactions,
     updateTransactionExpiry,
 	expireStaleTransactions,
 	getCashTransactionById,
