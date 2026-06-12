@@ -52,4 +52,8 @@ const replaceWithNewsImageThumb = (newsObj) => {
     return replaceWithImageThumb(newsObj, 'image_url', 'c_thumb,w_544,h_306');
 };
 
-module.exports = { withImageThumb, withProfileImageThumb, withNewsImageThumb, replaceWithImageThumb, replaceWithNewsImageThumb };
+const replaceWithAuthorImageThumb = (newsObj) => {
+    return replaceWithImageThumb(newsObj, 'author_image_url', 'c_thumb,w_100,h_100');
+};
+
+module.exports = { withImageThumb, withProfileImageThumb, withNewsImageThumb, replaceWithImageThumb, replaceWithNewsImageThumb, replaceWithAuthorImageThumb };
