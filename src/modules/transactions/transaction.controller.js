@@ -14,8 +14,9 @@ const createTransaction = async (req, res, next) => {
 
 const getPendingCash = async (req, res, next) => {
     try {
-        const transactions = await service.getCashPayments();
-        res.success(transactions, 'Pending cash transactions retrieved successfully');
+        const { page, limit } = paginationSchema.parse(req.query);
+        const result = await service.getCashPayments(page, limit);
+        res.success(result.data, 'Pending cash transactions retrieved successfully', 200, { page, limit, total_pages: result.total_pages, total_data: result.total_data });
     } catch (err) {
         next(err);
     }

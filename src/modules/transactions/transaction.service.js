@@ -195,8 +195,16 @@ const createPayment = async (userId, payload) => {
     return transaction;
 };
 
-const getCashPayments = async () => {
-    return await repository.getPendingCashTransactions();
+const getCashPayments = async (page, limit) => {
+    const offset = (page - 1) * limit;
+    const { rows, totalCount } = await repository.getPendingCashTransactions({ limit, offset });
+    return {
+        page,
+        limit,
+        total_pages: Math.ceil(totalCount / limit),
+        total_data: totalCount,
+        data: rows
+    };
 };
 
 const getTransactionHistory = async (userId, role, page, limit) => {
