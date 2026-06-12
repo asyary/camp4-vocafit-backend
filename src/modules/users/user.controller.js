@@ -1,21 +1,11 @@
 const service = require('./user.service');
-const { updateProfileSchema, updatePasswordSchema } = require('./user.validation');
+const { updatePasswordSchema } = require('./user.validation');
 const { clearTokens } = require('../../utils/cookie.util');
 
 const getMe = async (req, res, next) => {
     try {
         const user = await service.getMyProfile(req.user.id);
         res.success(user, 'Profile retrieved successfully');
-    } catch (err) {
-        next(err);
-    }
-};
-
-const updateMe = async (req, res, next) => {
-    try {
-        const parsedBody = updateProfileSchema.parse(req.body);
-        const updatedUser = await service.updateMyProfile(req.user.id, parsedBody);
-        res.success(updatedUser, 'Profile updated successfully');
     } catch (err) {
         next(err);
     }
@@ -70,4 +60,4 @@ const revokeMySession = async (req, res, next) => {
     }
 };
 
-module.exports = { getMe, updateMe, deleteMe, updatePassword, getMySessions, revokeMySession };
+module.exports = { getMe, deleteMe, updatePassword, getMySessions, revokeMySession };

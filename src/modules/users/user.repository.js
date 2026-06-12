@@ -35,46 +35,6 @@ const getUserProfile = async (id) => {
     return rows[0];
 };
 
-const updateProfile = async (id, data) => {
-    const { fullName, phoneNumber } = data;
-    const { rows } = await db.query(
-        `WITH updated AS (
-            UPDATE users 
-            SET full_name = COALESCE($1, full_name), 
-                phone_number = COALESCE($2, phone_number)
-            WHERE id = $3
-              AND is_verified = TRUE
-            RETURNING id, email, full_name, phone_number, date_of_birth, profile_image_url, role
-        )
-         SELECT updated.id,
-                updated.email,
-                updated.full_name,
-                updated.phone_number,
-                updated.date_of_birth,
-                updated.profile_image_url,
-                updated.role,
-                (
-                    SELECT json_build_object(
-                        'status', CASE WHEN m.end_date > NOW() THEN 'ACTIVE' ELSE 'EXPIRED' END,
-                        'end_date', m.end_date,
-                        'plan_code', m.plan_code,
-                        'type', m.type
-                    )
-                    FROM memberships m
-                    WHERE m.user_id = updated.id AND m.canceled_at IS NULL
-                    ORDER BY m.end_date DESC
-                    LIMIT 1
-                ) AS membership,
-                uat.account_tier_code AS membership_price_code,
-                t.name AS tier
-         FROM updated
-         LEFT JOIN user_account_tiers uat ON uat.user_id = updated.id
-         LEFT JOIN pricing_account_tiers t ON t.code = uat.account_tier_code`,
-        [fullName, phoneNumber, id]
-    );
-    return rows[0];
-};
-
 const invalidateAccount = async (id) => {
     return await db.withTransaction(async (client) => {
         const { rows } = await client.query(
@@ -143,4 +103,4 @@ const revokeSession = async (userId, sessionId) => {
     return rows[0];
 };
 
-module.exports = { getUserProfile, updateProfile, invalidateAccount, getUserPassword, updatePassword, getActiveSessions, revokeSession };
+module.exports = { getUserProfile, invalidateAccount, getUserPassword, updatePassword, getActiveSessions, revokeSession };
