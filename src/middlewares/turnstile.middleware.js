@@ -12,9 +12,13 @@ const verifyTurnstile = async (req, res, next) => {
         formData.append('secret', process.env.TURNSTILE_SECRET_KEY);
         formData.append('response', token);
 
-        const ip = req.ip;
-        if (ip) {
-            formData.append('remoteip', ip);
+        const rawIp = req.ip || req.connection.remoteAddress;
+        if (rawIp) {
+            let cleanIp = rawIp.split(',')[0].trim();
+            if (cleanIp.startsWith('::ffff:')) {
+                cleanIp = cleanIp.replace('::ffff:', '');
+            }
+            formData.append('remoteip', cleanIp);
         }
 
         const response = await fetch('https://challenges.cloudflare.com/turnstile/v0/siteverify', {
