@@ -1,4 +1,5 @@
 const { z } = require('zod');
+const { paginationSchema } = require('../../utils/validation.util');
 
 const participantEmailSchema = z.string().trim().email('Invalid participant email').transform((value) => value.toLowerCase());
 
@@ -22,4 +23,9 @@ const transactionIdParamSchema = z.object({
     transactionId: z.uuid()
 });
 
-module.exports = { createTransactionSchema, confirmCashSchema, cancelTransactionSchema, transactionIdParamSchema };
+const transactionHistoryQuerySchema = paginationSchema.extend({
+    method: z.enum(['qris', 'cash']).transform(v => v.toUpperCase()).optional(),
+    status: z.enum(['success', 'failed', 'pending']).transform(v => v.toUpperCase()).optional(),
+});
+
+module.exports = { createTransactionSchema, confirmCashSchema, cancelTransactionSchema, transactionIdParamSchema, transactionHistoryQuerySchema };

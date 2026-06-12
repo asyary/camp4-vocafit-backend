@@ -1,6 +1,5 @@
 const service = require('./transaction.service');
-const { paginationSchema } = require('../../utils/validation.util');
-const { createTransactionSchema, confirmCashSchema, cancelTransactionSchema, transactionIdParamSchema } = require('./transaction.validation');
+const { createTransactionSchema, confirmCashSchema, cancelTransactionSchema, transactionIdParamSchema, transactionHistoryQuerySchema } = require('./transaction.validation');
 
 const createTransaction = async (req, res, next) => {
     try {
@@ -12,20 +11,11 @@ const createTransaction = async (req, res, next) => {
     }
 };
 
-const getPendingCash = async (req, res, next) => {
-    try {
-        const { page, limit } = paginationSchema.parse(req.query);
-        const result = await service.getCashPayments(page, limit);
-        res.success(result.data, 'Pending cash transactions retrieved successfully', 200, { page, limit, total_pages: result.total_pages, total_data: result.total_data });
-    } catch (err) {
-        next(err);
-    }
-};
-
 const getTransactionHistory = async (req, res, next) => {
     try {
-        const { page, limit } = paginationSchema.parse(req.query);
-        const result = await service.getTransactionHistory(req.user.id, req.user.role, page, limit);
+        const { page, limit, method, status } = transactionHistoryQuerySchema.parse(req.query);
+        const filters = { method, status };
+        const result = await service.getTransactionHistory(req.user.id, req.user.role, page, limit, filters);
         res.success(result.data, 'Transaction history retrieved successfully', 200, { page, limit, total_pages: result.total_pages, total_data: result.total_data });
     } catch (err) {
         next(err);
@@ -75,4 +65,4 @@ const midtransWebhook = async (req, res, next) => {
     }
 };
 
-module.exports = { createTransaction, getPendingCash, getTransactionHistory, getTransactionDetails, cancelTransaction, confirmCash, midtransWebhook };
+module.exports = { createTransaction, getTransactionHistory, getTransactionDetails, cancelTransaction, confirmCash, midtransWebhook };
