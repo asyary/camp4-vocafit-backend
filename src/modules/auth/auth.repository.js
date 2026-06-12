@@ -38,6 +38,47 @@ const findByEmail = async (email) => {
     return rows[0];
 };
 
+const findByBaseEmail = async (email) => {
+    const [localPart, domain] = email.split('@');
+    if (!domain) return null;
+    const baseLocalPart = localPart.split('+')[0];
+    const baseEmail = `${baseLocalPart}@${domain}`;
+
+    const { rows } = await db.query(
+        `SELECT u.id,
+                u.email,
+                u.password,
+                u.full_name,
+                u.role,
+                (
+                    SELECT json_build_object(
+                        'status', CASE WHEN m.end_date > NOW() THEN 'ACTIVE' ELSE 'EXPIRED' END,
+                        'end_date', m.end_date,
+                        'plan_code', m.plan_code,
+                        'type', m.type
+                    )
+                    FROM memberships m
+                    WHERE m.user_id = u.id AND m.canceled_at IS NULL
+                    ORDER BY m.end_date DESC
+                    LIMIT 1
+                ) AS membership,
+                u.is_verified,
+                u.penalty_amount,
+                u.profile_image_url,
+                u.verified_at,
+                u.created_at,
+                u.updated_at,
+                uat.account_tier_code AS membership_price_code,
+                t.name AS tier
+         FROM users u
+         LEFT JOIN user_account_tiers uat ON uat.user_id = u.id
+         LEFT JOIN pricing_account_tiers t ON t.code = uat.account_tier_code
+         WHERE (SPLIT_PART(SPLIT_PART(u.email, '@', 1), '+', 1) || '@' || SPLIT_PART(u.email, '@', 2)) = $1`,
+        [baseEmail]
+    );
+    return rows[0];
+};
+
 const createUser = async (userData, executor = db) => {
     const { email, passwordHash, fullName, phoneNumber, birthDate, membershipPriceCode, profileImageUrl, isVerified = false, googleId = null } = userData;
     const { rows } = await queryWith(
@@ -372,6 +413,7 @@ const invalidateAllUserSessions = async (userId, executor = db) => {
 
 module.exports = {
     findByEmail,
+    findByBaseEmail,
     createUser,
     updateUnverifiedUser,
     markUserVerified,

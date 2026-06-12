@@ -128,7 +128,11 @@ const determineMembershipTier = async (email) => {
 };
 
 const register = async (data, fileBuffer) => {
-    const existingUser = await repository.findByEmail(data.email);
+    const existingUserByBaseEmail = await repository.findByBaseEmail(data.email);
+    if (existingUserByBaseEmail && existingUserByBaseEmail.email !== data.email) {
+        throw new Error('Email already registered.');
+    }
+    const existingUser = existingUserByBaseEmail;
     const activeVerification = existingUser && !existingUser.is_verified
         ? await repository.getActiveChallenge(data.email, CHALLENGE_TYPES.EMAIL_VERIFICATION)
         : null;
@@ -141,12 +145,12 @@ const register = async (data, fileBuffer) => {
                 buildChallengePayload(CHALLENGE_TYPES.EMAIL_VERIFICATION, activeVerification)
             );
         }
-        throw new Error('Email already registered');
+        throw new Error('Email already registered.');
     }
 
     const verificationsToday = await repository.countChallengesCreatedToday(data.email, CHALLENGE_TYPES.EMAIL_VERIFICATION);
     if (verificationsToday >= 2 && (!existingUser || (!existingUser.is_verified && !activeVerification))) {
-        throw new Error('Daily registration limit reached. Please try again tomorrow');
+        throw new Error('Daily registration limit reached. Please try again tomorrow.');
     }
 
     // Upload image to Cloudinary
@@ -533,7 +537,11 @@ const registerGoogle = async (data, fileBuffer, ipAddress, userAgent) => {
     const defaultPicture = payload.picture;
     const googleId = payload.sub;
 
-    const existingUser = await repository.findByEmail(email);
+    const existingUserByBaseEmail = await repository.findByBaseEmail(email);
+    if (existingUserByBaseEmail && existingUserByBaseEmail.email !== email) {
+        throw new Error('An account with a matching base email already exists. Please use the original email address.');
+    }
+    const existingUser = existingUserByBaseEmail;
     const activeVerification = existingUser && !existingUser.is_verified
         ? await repository.getActiveChallenge(email, CHALLENGE_TYPES.EMAIL_VERIFICATION)
         : null;
