@@ -1,4 +1,5 @@
 const service = require('./trainer.service');
+const { paginationSchema } = require('../../utils/validation.util');
 const {
     trainerSchema,
     updateTrainerSchema,
@@ -25,8 +26,9 @@ const createTrainer = async (req, res, next) => {
 
 const getTrainers = async (req, res, next) => {
     try {
-        const trainers = await service.getTrainers();
-        res.success(trainers, 'Trainers retrieved successfully');
+        const { page, limit } = paginationSchema.parse(req.query);
+        const result = await service.getTrainers(page, limit);
+        res.success(result.data, 'Trainers retrieved successfully', 200, { page, limit, total_pages: result.total_pages, total_data: result.total_data });
     } catch (err) {
         next(err);
     }

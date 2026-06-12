@@ -16,7 +16,17 @@ const addTrainer = async (data, fileBuffer) => {
     return await repository.createTrainer({ ...data, imageUrl });
 };
 
-const getTrainers = async () => await repository.getAllTrainers();
+const getTrainers = async (page, limit) => {
+    const offset = (page - 1) * limit;
+    const { rows, totalCount } = await repository.getAllTrainers({ limit, offset });
+    return {
+        page,
+        limit,
+        total_pages: Math.ceil(totalCount / limit),
+        total_data: totalCount,
+        data: rows
+    };
+};
 
 const getTrainerById = async (trainerId) => {
     const trainer = await repository.findTrainerById(trainerId);
