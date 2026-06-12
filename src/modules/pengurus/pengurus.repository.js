@@ -1,6 +1,50 @@
 const db = require('../../config/db');
 
-const getAllUsers = async (limit, offset) => {
+const buildUserFilters = (filters = {}) => {
+    const { role, membership, inactive } = filters;
+    const conditions = [];
+    const params = [];
+
+    // By default show only verified (active) accounts;
+    // ?inactive=true flips to show only unverified accounts.
+    if (inactive === true) {
+        conditions.push(`u.is_verified = FALSE`);
+    } else {
+        conditions.push(`u.is_verified = TRUE`);
+    }
+
+    if (role) {
+        params.push(role);
+        conditions.push(`u.role = $${params.length}`);
+    }
+
+    if (membership === true) {
+        conditions.push(`EXISTS (
+            SELECT 1 FROM memberships m
+            WHERE m.user_id = u.id
+              AND m.end_date > NOW()
+              AND m.canceled_at IS NULL
+        )`);
+    } else if (membership === false) {
+        conditions.push(`NOT EXISTS (
+            SELECT 1 FROM memberships m
+            WHERE m.user_id = u.id
+              AND m.end_date > NOW()
+              AND m.canceled_at IS NULL
+        )`);
+    }
+
+    return { conditions, params };
+};
+
+const getAllUsers = async (limit, offset, filters = {}) => {
+    const { conditions, params } = buildUserFilters(filters);
+    const whereClause = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
+
+    // limit and offset come after the filter params
+    const limitIndex = params.length + 1;
+    const offsetIndex = params.length + 2;
+
     const { rows } = await db.query(
         `SELECT u.id,
                 u.email,
@@ -28,16 +72,24 @@ const getAllUsers = async (limit, offset) => {
          FROM users u
          LEFT JOIN user_account_tiers uat ON uat.user_id = u.id
          LEFT JOIN pricing_account_tiers t ON t.code = uat.account_tier_code
-         WHERE u.is_verified = TRUE
-         ORDER BY u.created_at DESC 
-         LIMIT $1 OFFSET $2`,
-        [limit, offset]
+         ${whereClause}
+         ORDER BY u.created_at DESC
+         LIMIT $${limitIndex} OFFSET $${offsetIndex}`,
+        [...params, limit, offset]
     );
     return rows;
 };
 
-const countAllUsers = async () => {
-    const { rows } = await db.query('SELECT COUNT(*) FROM users WHERE is_verified = TRUE');
+const countAllUsers = async (filters = {}) => {
+    const { conditions, params } = buildUserFilters(filters);
+    const whereClause = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
+
+    const { rows } = await db.query(
+        `SELECT COUNT(*)
+         FROM users u
+         ${whereClause}`,
+        params
+    );
     return parseInt(rows[0].count, 10);
 };
 

@@ -47,13 +47,13 @@ const getDashboardMetrics = async () => {
     };
 };
 
-const getUsersList = async (page, limit) => {
+const getUsersList = async (page, limit, filters = {}) => {
     const offset = (page - 1) * limit;
 
     // Run both queries concurrently
     const [users, totalCount] = await Promise.all([
-        repository.getAllUsers(limit, offset),
-        repository.countAllUsers()
+        repository.getAllUsers(limit, offset, filters),
+        repository.countAllUsers(filters)
     ]);
 
     const totalPages = Math.ceil(totalCount / limit);

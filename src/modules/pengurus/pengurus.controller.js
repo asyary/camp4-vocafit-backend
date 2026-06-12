@@ -1,5 +1,5 @@
 const service = require('./pengurus.service');
-const { createUserSchema, updateUserSchema, imageSchema } = require('./pengurus.validation');
+const { createUserSchema, updateUserSchema, imageSchema, getUsersQuerySchema } = require('./pengurus.validation');
 const { paginationSchema } = require('../../utils/validation.util');
 
 const getMetrics = async (req, res, next) => {
@@ -13,9 +13,10 @@ const getMetrics = async (req, res, next) => {
 
 const getUsers = async (req, res, next) => {
     try {
-        const { page, limit } = paginationSchema.parse(req.query);
-        
-        const result = await service.getUsersList(page, limit);
+        const { page, limit, role, membership, inactive } = getUsersQuerySchema.parse(req.query);
+
+        const filters = { role, membership, inactive };
+        const result = await service.getUsersList(page, limit, filters);
         
         res.success(result.data, 'Users retrieved successfully', 200, { page, limit, total_pages: result.total_pages, total_data: result.total_data });
     } catch (err) {
