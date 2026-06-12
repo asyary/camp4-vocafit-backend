@@ -103,6 +103,7 @@ const getMyVisitHistory = async (userId, query) => {
         page,
         limit,
         total_pages: Math.ceil(totalCount / limit),
+        total_data: totalCount,
         data: history
     };
 };

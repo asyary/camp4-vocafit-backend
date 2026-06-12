@@ -62,6 +62,7 @@ const getUsersList = async (page, limit) => {
         page,
         limit,
         total_pages: totalPages,
+        total_data: totalCount,
         data: users.map(user => withProfileImageThumb(user))
     };
 };

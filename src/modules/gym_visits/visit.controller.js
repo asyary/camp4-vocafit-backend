@@ -38,7 +38,8 @@ const getMyVisitHistory = async (req, res, next) => {
         res.success(result.data, 'Visit history retrieved successfully', 200, { 
             page: result.page, 
             limit: result.limit, 
-            total: result.total_pages 
+            total_pages: result.total_pages,
+            total_data: result.total_data
         });
     } catch (err) {
         next(err);

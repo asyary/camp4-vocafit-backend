@@ -9,7 +9,8 @@ const getMyNotifications = async (req, res, next) => {
         res.success(result.data, 'Notifications retrieved successfully', 200, {
             page: result.page,
             limit: result.limit,
-            total: result.total_pages,
+            total_pages: result.total_pages,
+            total_data: result.total_data,
             unread_count: result.unread_count
         });
     } catch (err) {

@@ -44,6 +44,7 @@ const getNews = async (page, limit) => {
 		page,
 		limit,
 		total_pages: Math.ceil(totalCount / limit),
+		total_data: totalCount,
 		data: newsWithThumbnails
 	};
 };

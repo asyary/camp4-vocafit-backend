@@ -32,15 +32,23 @@ const createTrainer = async (data, executor = db) => {
     return rows[0];
 };
 
-const getAllTrainers = async (executor = db) => {
-    const { rows } = await executor.query(
-        `SELECT id, name, email, phone_number, bio, specialties, image_url,
-                (SELECT COUNT(*)::int FROM trainer_packages tp WHERE tp.trainer_id = trainers.id AND tp.status = 'ACTIVE' AND tp.expires_at > NOW()) AS active_booking,
-                (SELECT COUNT(*)::int FROM trainer_packages tp WHERE tp.trainer_id = trainers.id AND tp.status != 'CANCELED') AS total_booking,
-                is_active, created_at, updated_at
-         FROM trainers WHERE is_active = TRUE ORDER BY created_at ASC`
-    );
-    return rows;
+const getAllTrainers = async ({ limit, offset }, executor = db) => {
+    const baseCondition = `FROM trainers WHERE is_active = TRUE`;
+
+    const [{ rows }, { rows: countRows }] = await Promise.all([
+        executor.query(
+            `SELECT id, name, email, phone_number, bio, specialties, image_url,
+                    (SELECT COUNT(*)::int FROM trainer_packages tp WHERE tp.trainer_id = trainers.id AND tp.status = 'ACTIVE' AND tp.expires_at > NOW()) AS active_booking,
+                    (SELECT COUNT(*)::int FROM trainer_packages tp WHERE tp.trainer_id = trainers.id AND tp.status != 'CANCELED') AS total_booking,
+                    is_active, created_at, updated_at
+             ${baseCondition} ORDER BY created_at ASC
+             LIMIT $1 OFFSET $2`,
+            [limit, offset]
+        ),
+        executor.query(`SELECT COUNT(*)::int AS total ${baseCondition}`)
+    ]);
+
+    return { rows, totalCount: countRows[0].total };
 };
 
 const getTrainerById = async (trainerId, executor = db) => {

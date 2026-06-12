@@ -17,7 +17,7 @@ const getUsers = async (req, res, next) => {
         
         const result = await service.getUsersList(page, limit);
         
-        res.success(result.data, 'Users retrieved successfully', 200, { page, limit, total: result.total_pages });
+        res.success(result.data, 'Users retrieved successfully', 200, { page, limit, total_pages: result.total_pages, total_data: result.total_data });
     } catch (err) {
         next(err);
     }
