@@ -17,12 +17,13 @@ const createUserSchema = z.object({
 
 const imageSchema = z.object({
 	image: z
-	.any()
-	.refine((file) => !file || file.size <= MAX_FILE_SIZE, `Max image size is 5MB.`)
-	.refine(
-		(file) => !file || ACCEPTED_IMAGE_TYPES.includes(file.mimetype || file.type),
-		"Only .jpg, .jpeg, .png and .webp formats are supported."
-	)
+		.any()
+		.refine((file) => !!file, 'Profile image is required')
+		.refine((file) => !file || file.size <= MAX_FILE_SIZE, 'Max image size is 5MB.')
+		.refine(
+			(file) => !file || ACCEPTED_IMAGE_TYPES.includes(file.mimetype || file.type),
+			'Only .jpg, .jpeg, .png and .webp formats are supported.'
+		)
 })
 
 const updateUserSchema = z.object({
