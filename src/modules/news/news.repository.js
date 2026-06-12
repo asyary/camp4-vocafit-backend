@@ -25,7 +25,7 @@ const updateNews = async (id, data) => {
 
 const getAllNews = async (limit, offset) => {
     const { rows } = await db.query(
-        `SELECT n.id, n.title, n.summary, n.image_url, u.full_name AS author, n.created_at 
+        `SELECT n.id, n.title, n.summary, n.image_url, u.full_name AS author, u.profile_image_url AS author_image_url, n.created_at 
          FROM news n
          LEFT JOIN users u ON n.author_id = u.id
          ORDER BY n.created_at DESC LIMIT $1 OFFSET $2`,
@@ -36,7 +36,7 @@ const getAllNews = async (limit, offset) => {
 
 const getNewsById = async (id) => {
     const { rows } = await db.query(
-        `SELECT n.id, n.title, n.summary, n.content, n.image_url, u.full_name AS author, n.created_at 
+        `SELECT n.id, n.title, n.summary, n.content, n.image_url, u.full_name AS author, u.profile_image_url AS author_image_url, n.created_at 
          FROM news n
          LEFT JOIN users u ON n.author_id = u.id
          WHERE n.id = $1`, 
