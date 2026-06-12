@@ -1,6 +1,7 @@
 const express = require('express');
 const controller = require('./transaction.controller');
 const { requireAuth, requireRole } = require('../../middlewares/auth.middleware');
+const { verifyTurnstile } = require('../../middlewares/turnstile.middleware');
 
 const router = express.Router();
 
@@ -9,7 +10,7 @@ router.post('/webhook', controller.midtransWebhook);
 
 router.use(requireAuth);
 
-router.post('/create', controller.createTransaction);
+router.post('/create', verifyTurnstile, controller.createTransaction);
 
 router.post('/:transactionId/cancel', controller.cancelTransaction);
 router.get('/history', controller.getTransactionHistory);

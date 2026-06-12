@@ -1,9 +1,12 @@
 const express = require('express');
 const controller = require('./auth.controller');
 const upload = require('../../middlewares/upload.middleware');
+const { verifyTurnstile } = require('../../middlewares/turnstile.middleware');
 const router = express.Router();
 
-// These routes needs captcha
+// All auth routes are protected by Turnstile (managed)
+router.use(verifyTurnstile);
+
 router.post('/register', upload.single('image'), controller.register);
 router.post('/register/google', upload.single('image'), controller.registerGoogle);
 router.post('/register/resend', controller.resendVerificationEmail);
