@@ -25,7 +25,7 @@ const getTransactionHistory = async (req, res, next) => {
     try {
         const { page, limit } = paginationSchema.parse(req.query);
         const result = await service.getTransactionHistory(req.user.id, req.user.role, page, limit);
-        res.success(result.data, 'Transaction history retrieved successfully', 200, { page, limit, total: result.total_pages });
+        res.success(result.data, 'Transaction history retrieved successfully', 200, { page, limit, total_pages: result.total_pages, total_data: result.total_data });
     } catch (err) {
         next(err);
     }

@@ -42,7 +42,8 @@ const getNotificationsForUser = async (userId, page, limit) => {
         unread_count: unreadCount,
         page,
         limit,
-        total_pages: Math.ceil(totalCount / limit)
+        total_pages: Math.ceil(totalCount / limit),
+        total_data: totalCount
     };
 };
 

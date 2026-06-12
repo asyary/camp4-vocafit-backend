@@ -212,6 +212,7 @@ const getTransactionHistory = async (userId, role, page, limit) => {
         page,
         limit,
         total_pages: Math.ceil(totalCount / limit),
+        total_data: totalCount,
         data: rows
     };
 };
