@@ -36,6 +36,7 @@ const createUser = async (req, res, next) => {
     try {
         const parsedBody = createUserSchema.parse(req.body);
         const fileBuffer = req.file ? req.file.buffer : null;
+		if (req.file) imageSchema.parse({ image: req.file });
 
         const user = await service.addUser(parsedBody, fileBuffer);
         res.success(user, 'User created successfully', 201);

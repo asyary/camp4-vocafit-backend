@@ -23,6 +23,7 @@ const updateTrainerSchema = z.object({
 const imageSchema = z.object({
     image: z
         .any()
+        .refine((file) => !!file, 'Trainer image is required')
         .refine((file) => !file || file.size <= MAX_FILE_SIZE, 'Max image size is 5MB.')
         .refine(
             (file) => !file || ACCEPTED_IMAGE_TYPES.includes(file.mimetype || file.type),
