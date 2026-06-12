@@ -1,6 +1,12 @@
 const { z } = require('zod');
 const { paginationSchema } = require('../../utils/validation.util');
 
+const getUsersQuerySchema = paginationSchema.extend({
+    role: z.enum(['member', 'pengurus']).optional(),
+    membership: z.enum(['true', 'false']).transform(v => v === 'true').optional(),
+    inactive: z.enum(['true', 'false']).transform(v => v === 'true').optional(),
+});
+
 const MAX_FILE_SIZE = 5000000;
 const ACCEPTED_IMAGE_TYPES = ["image/jpeg", "image/jpg", "image/png", "image/webp"];
 
@@ -37,4 +43,4 @@ const updateUserSchema = z.object({
 	penaltyAmount: z.coerce.number().min(0, 'Penalty amount must be a positive number').optional()
 });
 
-module.exports = { createUserSchema, updateUserSchema, imageSchema, paginationSchema };
+module.exports = { createUserSchema, updateUserSchema, imageSchema, paginationSchema, getUsersQuerySchema };
