@@ -7,7 +7,6 @@ const router = express.Router();
 router.use(requireAuth);
 
 router.get('/me', controller.getMe);
-router.put('/me', controller.updateMe);
 router.put('/me/password', controller.updatePassword);
 router.delete('/me', controller.deleteMe);
 router.get('/sessions', controller.getMySessions);

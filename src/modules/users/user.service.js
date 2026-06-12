@@ -9,14 +9,6 @@ const getMyProfile = async (userId) => {
     return withProfileImageThumb(user);
 };
 
-const updateMyProfile = async (userId, data) => {
-    const updatedUser = await repository.updateProfile(userId, { 
-        fullName: data.fullName, 
-        phoneNumber: data.phoneNumber 
-    });
-    return withProfileImageThumb(updatedUser);
-};
-
 const deleteMyAccount = async (userId) => {
     const invalidatedUser = await repository.invalidateAccount(userId);
     if (!invalidatedUser) throw new Error('User not found');
@@ -58,4 +50,4 @@ const revokeMySession = async (userId, sessionId) => {
     return session;
 };
 
-module.exports = { getMyProfile, updateMyProfile, deleteMyAccount, updateMyPassword, getMySessions, revokeMySession };
+module.exports = { getMyProfile, deleteMyAccount, updateMyPassword, getMySessions, revokeMySession };
