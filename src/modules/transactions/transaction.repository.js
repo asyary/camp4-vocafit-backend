@@ -484,8 +484,6 @@ const processSuccessfulPayment = async (transaction) => {
                 if (afterNinePm && isSameDate(startDate, now)) {
                     endDate.setDate(endDate.getDate() + 1);
                 }
-
-                endDate.setHours(23, 59, 59, 999);
             } else if (Number.isInteger(durationDays) && durationDays > 0) {
                 // Multi-day membership: add specified duration
                 endDate.setDate(endDate.getDate() + durationDays);
@@ -493,6 +491,9 @@ const processSuccessfulPayment = async (transaction) => {
                 // Fallback: default to 30 days if catalog is missing or invalid
                 endDate.setDate(endDate.getDate() + 30);
             }
+
+            // Set expiry to 23:59:59.999 on the calculated end date
+            endDate.setHours(23, 59, 59, 999);
 
             const type = transaction.transaction_type.split('_')[1].toLowerCase();
 

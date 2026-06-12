@@ -445,6 +445,11 @@ const createTrainerPackageFromTransaction = async (client, transaction) => {
     );
     const membership = membershipRows[0] || null;
 
+    const durationDays = Number(catalog.duration_days) || 30;
+    const expiresAt = new Date();
+    expiresAt.setDate(expiresAt.getDate() + durationDays);
+    expiresAt.setHours(23, 59, 59, 999);
+
     const { rows: packageRows } = await client.query(
         `INSERT INTO trainer_packages (
             transaction_id,
@@ -458,7 +463,7 @@ const createTrainerPackageFromTransaction = async (client, transaction) => {
             status,
             purchased_at,
             expires_at
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'ACTIVE', NOW(), NOW() + ($9 * INTERVAL '1 day'))
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'ACTIVE', NOW(), $9)
         RETURNING *`,
         [
             transaction.id,
@@ -469,7 +474,7 @@ const createTrainerPackageFromTransaction = async (client, transaction) => {
             Number(catalog.group_size),
             Number(catalog.session_count),
             Number(catalog.session_count),
-            Number(catalog.duration_days) || 30
+            expiresAt
         ]
     );
 
