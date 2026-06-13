@@ -51,6 +51,11 @@ const cancelSessionSchema = z.object({
     reason: z.string().trim().max(500).optional()
 });
 
+const sessionQuerySchema = z.object({
+    startDate: z.iso.date().optional(),
+    endDate: z.iso.date().optional(),
+});
+
 module.exports = {
     trainerSchema,
     updateTrainerSchema,
@@ -60,4 +65,5 @@ module.exports = {
     sessionIdParamSchema,
     bookSessionSchema,
     cancelSessionSchema,
+    sessionQuerySchema,
 };
