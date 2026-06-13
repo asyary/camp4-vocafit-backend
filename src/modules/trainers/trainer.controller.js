@@ -127,7 +127,30 @@ const getSessionsByTrainerId = async (req, res, next) => {
         const { page, limit } = paginationSchema.parse(req.query);
         const { startDate, endDate } = sessionQuerySchema.parse(req.query);
         const result = await service.getSessionsByTrainerId(trainerId, page, limit, startDate, endDate);
-        res.success(result.data, 'Trainer sessions retrieved successfully', 200, { trainer: result.trainer, page, limit, total_pages: result.total_pages, total_data: result.total_data });
+        res.success(result.data, 'Trainer sessions retrieved successfully', 200, { page, limit, total_pages: result.total_pages, total_data: result.total_data });
+    } catch (err) {
+        next(err);
+    }
+};
+
+const getSessionsByTrainerIdForMember = async (req, res, next) => {
+    try {
+        const { trainerId } = trainerIdParamSchema.parse(req.params);
+        const { page, limit } = paginationSchema.parse(req.query);
+        const { startDate, endDate } = sessionQuerySchema.parse(req.query);
+        const result = await service.getSessionsByTrainerIdForMember(trainerId, req.user.id, page, limit, startDate, endDate);
+        res.success(result.data, 'Trainer sessions retrieved successfully', 200, { page, limit, total_pages: result.total_pages, total_data: result.total_data });
+    } catch (err) {
+        next(err);
+    }
+};
+
+const getMySessions = async (req, res, next) => {
+    try {
+        const { page, limit } = paginationSchema.parse(req.query);
+        const { startDate, endDate } = sessionQuerySchema.parse(req.query);
+        const result = await service.getMySessionsAsBooker(req.user.id, page, limit, startDate, endDate);
+        res.success(result.data, 'My sessions retrieved successfully', 200, { page, limit, total_pages: result.total_pages, total_data: result.total_data });
     } catch (err) {
         next(err);
     }
@@ -145,4 +168,6 @@ module.exports = {
     cancelSession,
     getAllSessions,
     getSessionsByTrainerId,
+    getSessionsByTrainerIdForMember,
+    getMySessions,
 };
