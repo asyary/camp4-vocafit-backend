@@ -20,6 +20,10 @@ router.post('/sessions/:sessionId/cancel', controller.cancelSession);
 router.get('/admin/sessions', requireRole('pengurus'), controller.getAllSessions);
 router.get('/admin/sessions/:trainerId', requireRole('pengurus'), controller.getSessionsByTrainerId);
 
+// Member session views
+router.get('/sessions/my', requireMembership, controller.getMySessions);
+router.get('/sessions/trainer/:trainerId', requireMembership, controller.getSessionsByTrainerIdForMember);
+
 // Admin trainer CRUD
 router.get('/:trainerId', controller.getTrainerById);
 router.post('/', requireRole('pengurus'), upload.single('image'), controller.createTrainer);

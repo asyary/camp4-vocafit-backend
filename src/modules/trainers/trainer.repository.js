@@ -563,8 +563,9 @@ const getAllSessions = async ({ limit, offset, startDate, endDate }, executor = 
 
     const dataQuery = `
         SELECT ts.*,
-               t.name  AS trainer_name,
-               t.email AS trainer_email,
+               t.name         AS trainer_name,
+               t.email        AS trainer_email,
+               t.phone_number AS trainer_phone_number,
                tp.catalog_code,
                u.full_name AS booked_by_name
         FROM trainer_sessions ts
@@ -610,14 +611,73 @@ const getSessionsByTrainerId = async (trainerId, { limit, offset, startDate, end
 
     const dataQuery = `
         SELECT ts.*,
-               t.name  AS trainer_name,
-               t.email AS trainer_email,
+               t.name         AS trainer_name,
+               t.email        AS trainer_email,
+               t.phone_number AS trainer_phone_number,
                tp.catalog_code,
                u.full_name AS booked_by_name
         FROM trainer_sessions ts
         JOIN trainer_packages tp ON tp.id = ts.package_id
         JOIN trainers t          ON t.id  = ts.trainer_id
         LEFT JOIN users u        ON u.id  = ts.booked_by_user_id
+        ${whereClause}
+        ORDER BY ts.start_time ASC
+        LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`;
+
+    const countQuery = `
+        SELECT COUNT(*)::int AS total
+        FROM trainer_sessions ts
+        ${whereClause}`;
+
+    const [{ rows }, { rows: countRows }] = await Promise.all([
+        executor.query(dataQuery, [...values, limit, offset]),
+        executor.query(countQuery, values),
+    ]);
+
+    return { rows, totalCount: countRows[0].total };
+};
+
+const isMemberOfTrainerPackage = async (trainerId, userId, executor = db) => {
+    const { rows } = await executor.query(
+        `SELECT 1
+         FROM trainer_package_members tpm
+         JOIN trainer_packages tp ON tp.id = tpm.package_id
+         WHERE tp.trainer_id = $1
+           AND tpm.user_id = $2
+           AND tpm.status = 'CONFIRMED'
+         LIMIT 1`,
+        [trainerId, userId]
+    );
+    return rows.length > 0;
+};
+
+const getMySessionsAsBooker = async (userId, { limit, offset, startDate, endDate }, executor = db) => {
+    const conditions = [`ts.booked_by_user_id = $1`];
+    const values = [userId];
+    let paramIndex = 2;
+
+    if (startDate) {
+        conditions.push(`ts.start_time >= $${paramIndex}`);
+        values.push(startDate);
+        paramIndex++;
+    }
+    if (endDate) {
+        conditions.push(`ts.start_time <= $${paramIndex}`);
+        values.push(endDate);
+        paramIndex++;
+    }
+
+    const whereClause = `WHERE ${conditions.join(' AND ')}`;
+
+    const dataQuery = `
+        SELECT ts.*,
+               t.name         AS trainer_name,
+               t.email        AS trainer_email,
+               t.phone_number AS trainer_phone_number,
+               tp.catalog_code
+        FROM trainer_sessions ts
+        JOIN trainer_packages tp ON tp.id = ts.package_id
+        JOIN trainers t          ON t.id  = ts.trainer_id
         ${whereClause}
         ORDER BY ts.start_time ASC
         LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`;
@@ -665,4 +725,6 @@ module.exports = {
     expireTrainerPackages,
     getAllSessions,
     getSessionsByTrainerId,
+    isMemberOfTrainerPackage,
+    getMySessionsAsBooker,
 };

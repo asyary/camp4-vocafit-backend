@@ -189,6 +189,37 @@ const cancelSession = async (userId, role, sessionId, payload) => {
     });
 };
 
+const mapSessionRow = (row, includeUser) => {
+    const {
+        trainer_id,
+        trainer_name,
+        trainer_email,
+        trainer_phone_number,
+        booked_by_user_id,
+        booked_by_name,
+        ...rest
+    } = row;
+
+    const mapped = {
+        ...rest,
+        trainer: {
+            id: trainer_id,
+            name: trainer_name,
+            email: trainer_email,
+            phone_number: trainer_phone_number,
+        },
+    };
+
+    if (includeUser) {
+        mapped.user = {
+            id: booked_by_user_id,
+            name: booked_by_name,
+        };
+    }
+
+    return mapped;
+};
+
 const getAllSessions = async (page, limit, startDate, endDate) => {
     const offset = (page - 1) * limit;
     const { rows, totalCount } = await repository.getAllSessions({ limit, offset, startDate, endDate });
@@ -197,7 +228,7 @@ const getAllSessions = async (page, limit, startDate, endDate) => {
         limit,
         total_pages: Math.ceil(totalCount / limit),
         total_data: totalCount,
-        data: rows,
+        data: rows.map((row) => mapSessionRow(row, true)),
     };
 };
 
@@ -209,12 +240,45 @@ const getSessionsByTrainerId = async (trainerId, page, limit, startDate, endDate
     const offset = (page - 1) * limit;
     const { rows, totalCount } = await repository.getSessionsByTrainerId(trainerId, { limit, offset, startDate, endDate });
     return {
-        trainer: { id: trainer.id, name: trainer.name, email: trainer.email },
         page,
         limit,
         total_pages: Math.ceil(totalCount / limit),
         total_data: totalCount,
-        data: rows,
+        data: rows.map((row) => mapSessionRow(row, true)),
+    };
+};
+
+const getSessionsByTrainerIdForMember = async (trainerId, userId, page, limit, startDate, endDate) => {
+    const trainer = await repository.findTrainerById(trainerId);
+    if (!trainer) {
+        throw createError('Trainer not found', 404);
+    }
+
+    const isMember = await repository.isMemberOfTrainerPackage(trainerId, userId);
+    if (!isMember) {
+        throw createError('You do not have a package with this trainer', 403);
+    }
+
+    const offset = (page - 1) * limit;
+    const { rows, totalCount } = await repository.getSessionsByTrainerId(trainerId, { limit, offset, startDate, endDate });
+    return {
+        page,
+        limit,
+        total_pages: Math.ceil(totalCount / limit),
+        total_data: totalCount,
+        data: rows.map((row) => mapSessionRow(row, false)),
+    };
+};
+
+const getMySessionsAsBooker = async (userId, page, limit, startDate, endDate) => {
+    const offset = (page - 1) * limit;
+    const { rows, totalCount } = await repository.getMySessionsAsBooker(userId, { limit, offset, startDate, endDate });
+    return {
+        page,
+        limit,
+        total_pages: Math.ceil(totalCount / limit),
+        total_data: totalCount,
+        data: rows.map((row) => mapSessionRow(row, false)),
     };
 };
 
@@ -230,4 +294,6 @@ module.exports = {
     cancelSession,
     getAllSessions,
     getSessionsByTrainerId,
+    getSessionsByTrainerIdForMember,
+    getMySessionsAsBooker,
 };
