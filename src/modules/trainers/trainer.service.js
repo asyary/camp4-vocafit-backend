@@ -189,6 +189,35 @@ const cancelSession = async (userId, role, sessionId, payload) => {
     });
 };
 
+const getAllSessions = async (page, limit, startDate, endDate) => {
+    const offset = (page - 1) * limit;
+    const { rows, totalCount } = await repository.getAllSessions({ limit, offset, startDate, endDate });
+    return {
+        page,
+        limit,
+        total_pages: Math.ceil(totalCount / limit),
+        total_data: totalCount,
+        data: rows,
+    };
+};
+
+const getSessionsByTrainerId = async (trainerId, page, limit, startDate, endDate) => {
+    const trainer = await repository.findTrainerById(trainerId);
+    if (!trainer) {
+        throw createError('Trainer not found', 404);
+    }
+    const offset = (page - 1) * limit;
+    const { rows, totalCount } = await repository.getSessionsByTrainerId(trainerId, { limit, offset, startDate, endDate });
+    return {
+        trainer: { id: trainer.id, name: trainer.name, email: trainer.email },
+        page,
+        limit,
+        total_pages: Math.ceil(totalCount / limit),
+        total_data: totalCount,
+        data: rows,
+    };
+};
+
 module.exports = {
     addTrainer,
     getTrainers,
@@ -199,4 +228,6 @@ module.exports = {
     getPackageDetails,
     bookSession,
     cancelSession,
+    getAllSessions,
+    getSessionsByTrainerId,
 };

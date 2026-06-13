@@ -543,6 +543,98 @@ const expireTrainerPackages = async () => {
     return rowCount;
 };
 
+const getAllSessions = async ({ limit, offset, startDate, endDate }, executor = db) => {
+    const conditions = [];
+    const values = [];
+    let paramIndex = 1;
+
+    if (startDate) {
+        conditions.push(`ts.start_time >= $${paramIndex}`);
+        values.push(startDate);
+        paramIndex++;
+    }
+    if (endDate) {
+        conditions.push(`ts.start_time <= $${paramIndex}`);
+        values.push(endDate);
+        paramIndex++;
+    }
+
+    const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+
+    const dataQuery = `
+        SELECT ts.*,
+               t.name  AS trainer_name,
+               t.email AS trainer_email,
+               tp.catalog_code,
+               u.full_name AS booked_by_name
+        FROM trainer_sessions ts
+        JOIN trainer_packages tp ON tp.id = ts.package_id
+        JOIN trainers t          ON t.id  = ts.trainer_id
+        LEFT JOIN users u        ON u.id  = ts.booked_by_user_id
+        ${whereClause}
+        ORDER BY ts.start_time ASC
+        LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`;
+
+    const countQuery = `
+        SELECT COUNT(*)::int AS total
+        FROM trainer_sessions ts
+        JOIN trainer_packages tp ON tp.id = ts.package_id
+        JOIN trainers t          ON t.id  = ts.trainer_id
+        ${whereClause}`;
+
+    const [{ rows }, { rows: countRows }] = await Promise.all([
+        executor.query(dataQuery, [...values, limit, offset]),
+        executor.query(countQuery, values),
+    ]);
+
+    return { rows, totalCount: countRows[0].total };
+};
+
+const getSessionsByTrainerId = async (trainerId, { limit, offset, startDate, endDate }, executor = db) => {
+    const conditions = [`ts.trainer_id = $1`];
+    const values = [trainerId];
+    let paramIndex = 2;
+
+    if (startDate) {
+        conditions.push(`ts.start_time >= $${paramIndex}`);
+        values.push(startDate);
+        paramIndex++;
+    }
+    if (endDate) {
+        conditions.push(`ts.start_time <= $${paramIndex}`);
+        values.push(endDate);
+        paramIndex++;
+    }
+
+    const whereClause = `WHERE ${conditions.join(' AND ')}`;
+
+    const dataQuery = `
+        SELECT ts.*,
+               t.name  AS trainer_name,
+               t.email AS trainer_email,
+               tp.catalog_code,
+               u.full_name AS booked_by_name
+        FROM trainer_sessions ts
+        JOIN trainer_packages tp ON tp.id = ts.package_id
+        JOIN trainers t          ON t.id  = ts.trainer_id
+        LEFT JOIN users u        ON u.id  = ts.booked_by_user_id
+        ${whereClause}
+        ORDER BY ts.start_time ASC
+        LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`;
+
+    const countQuery = `
+        SELECT COUNT(*)::int AS total
+        FROM trainer_sessions ts
+        ${whereClause}`;
+
+    const [{ rows }, { rows: countRows }] = await Promise.all([
+        executor.query(dataQuery, [...values, limit, offset]),
+        executor.query(countQuery, values),
+    ]);
+
+    return { rows, totalCount: countRows[0].total };
+};
+
 module.exports = {
     normalizeEmailList,
     runInTransaction,
@@ -571,4 +663,6 @@ module.exports = {
     createTrainerPackageFromTransaction,
     cancelTrainerPackageByTransactionId,
     expireTrainerPackages,
+    getAllSessions,
+    getSessionsByTrainerId,
 };
