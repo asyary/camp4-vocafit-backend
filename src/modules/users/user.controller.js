@@ -15,7 +15,7 @@ const deleteMe = async (req, res, next) => {
     try {
         await service.deleteMyAccount(req.user.id);
         clearTokens(res); // Log them out by clearing cookies
-        res.success(null, 'Account invalidated successfully');
+        res.success(null, 'Account deleted successfully');
     } catch (err) {
         next(err);
     }

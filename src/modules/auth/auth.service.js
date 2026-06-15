@@ -646,6 +646,20 @@ const loginGoogle = async (data, ipAddress, userAgent) => {
         throw createServiceError('Account not found. Please register first.', 404);
     }
 
+    if (!user.is_verified) {
+        const activeVerification = await repository.getActiveChallenge(email, CHALLENGE_TYPES.EMAIL_VERIFICATION);
+        await repository.createAuthLog({ userId: user.id, email, ipAddress, userAgent, isSuccess: false, reason: 'Account not verified' });
+        if (activeVerification) {
+            throw createServiceError(
+                'Verification is still active. Please check your email.',
+                403,
+                buildChallengePayload(CHALLENGE_TYPES.EMAIL_VERIFICATION, activeVerification)
+            );
+        }
+
+        throw new Error('Account is inactive');
+    }
+
     user = await db.withTransaction(async (client) => {
         return await repository.linkGoogleAccount(email, googleId, client);
     });
