@@ -12,6 +12,7 @@ const getMyProfile = async (userId) => {
 const deleteMyAccount = async (userId) => {
     const invalidatedUser = await repository.invalidateAccount(userId);
     if (!invalidatedUser) throw new Error('User not found');
+    await authRepository.invalidateAllUserSessions(userId);
     return invalidatedUser; // invalidateAccount returns id, email, full_name, role. No profile_image_url
 };
 
