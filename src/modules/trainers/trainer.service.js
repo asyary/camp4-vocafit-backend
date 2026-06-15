@@ -254,11 +254,6 @@ const getSessionsByTrainerIdForMember = async (trainerId, userId, page, limit, s
         throw createError('Trainer not found', 404);
     }
 
-    const isMember = await repository.isMemberOfTrainerPackage(trainerId, userId);
-    if (!isMember) {
-        throw createError('You do not have a package with this trainer', 403);
-    }
-
     const offset = (page - 1) * limit;
     const { rows, totalCount } = await repository.getSessionsByTrainerId(trainerId, { limit, offset, startDate, endDate });
     return {
