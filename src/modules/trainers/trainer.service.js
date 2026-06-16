@@ -76,7 +76,8 @@ const getPackageDetails = async (userId, role, packageId) => {
         throw createError('Trainer package not found', 404);
     }
 
-    const sessions = await repository.listSessionsByPackageId(packageId);
+    const isMember = role !== 'pengurus';
+    const sessions = await repository.listSessionsByPackageId(packageId, isMember);
     return {
         ...packageRow,
         sessions
@@ -122,6 +123,11 @@ const bookSession = async (userId, packageId, payload) => {
         }
         if (![0, 30].includes(sessionStart.getMinutes())) {
             throw createError('Trainer sessions must start on 30-minute intervals', 400);
+        }
+
+        const hasOverlap = await repository.checkOverlappingSession(client, pkg.trainer_id, sessionStart, sessionEnd);
+        if (hasOverlap) {
+            throw createError('The selected time overlaps with an existing booked session', 409);
         }
 
         // 4. Create the session
@@ -255,7 +261,7 @@ const getSessionsByTrainerIdForMember = async (trainerId, userId, page, limit, s
     }
 
     const offset = (page - 1) * limit;
-    const { rows, totalCount } = await repository.getSessionsByTrainerId(trainerId, { limit, offset, startDate, endDate });
+    const { rows, totalCount } = await repository.getSessionsByTrainerId(trainerId, { limit, offset, startDate, endDate, forMember: true });
     return {
         page,
         limit,

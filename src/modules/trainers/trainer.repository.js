@@ -230,13 +230,17 @@ const listPackagesByUserId = async (userId, executor = db) => {
     return rows;
 };
 
-const listSessionsByPackageId = async (packageId, executor = db) => {
+const listSessionsByPackageId = async (packageId, forMember = false, executor = db) => {
+    let whereClause = `WHERE ts.package_id = $1`;
+    if (forMember) {
+        whereClause += ` AND ts.status != 'CANCELLED' AND timezone('Asia/Jakarta', ts.start_time)::date >= timezone('Asia/Jakarta', NOW())::date`;
+    }
     const { rows } = await executor.query(
         `SELECT ts.*,
                 u.full_name AS booked_by_name
          FROM trainer_sessions ts
          LEFT JOIN users u ON u.id = ts.booked_by_user_id
-         WHERE ts.package_id = $1
+         ${whereClause}
          ORDER BY ts.start_time ASC`,
         [packageId]
     );
@@ -316,6 +320,20 @@ const canMemberCancelSession = async (sessionId, executor = db) => {
         [sessionId]
     );
     return rows[0]?.can_cancel ?? false;
+};
+
+const checkOverlappingSession = async (client, trainerId, startTime, endTime) => {
+    const { rows } = await client.query(
+        `SELECT 1
+         FROM trainer_sessions
+         WHERE trainer_id = $1
+           AND status != 'CANCELLED'
+           AND start_time < $3
+           AND end_time > $2
+         LIMIT 1`,
+        [trainerId, startTime, endTime]
+    );
+    return rows.length > 0;
 };
 
 const insertSession = async (client, { packageId, trainerId, bookedByUserId, startTime, endTime }) => {
@@ -591,10 +609,15 @@ const getAllSessions = async ({ limit, offset, startDate, endDate }, executor = 
     return { rows, totalCount: countRows[0].total };
 };
 
-const getSessionsByTrainerId = async (trainerId, { limit, offset, startDate, endDate }, executor = db) => {
+const getSessionsByTrainerId = async (trainerId, { limit, offset, startDate, endDate, forMember }, executor = db) => {
     const conditions = [`ts.trainer_id = $1`];
     const values = [trainerId];
     let paramIndex = 2;
+
+    if (forMember) {
+        conditions.push(`ts.status != 'CANCELLED'`);
+        conditions.push(`timezone('Asia/Jakarta', ts.start_time)::date >= timezone('Asia/Jakarta', NOW())::date`);
+    }
 
     if (startDate) {
         conditions.push(`ts.start_time >= $${paramIndex}`);
@@ -656,6 +679,9 @@ const getMySessionsAsBooker = async (userId, { limit, offset, startDate, endDate
     const values = [userId];
     let paramIndex = 2;
 
+    conditions.push(`ts.status != 'CANCELLED'`);
+    conditions.push(`timezone('Asia/Jakarta', ts.start_time)::date >= timezone('Asia/Jakarta', NOW())::date`);
+
     if (startDate) {
         conditions.push(`ts.start_time >= $${paramIndex}`);
         values.push(startDate);
@@ -716,6 +742,7 @@ module.exports = {
     getSessionWithPackageForUpdate,
     isConfirmedPackageMember,
     canMemberCancelSession,
+    checkOverlappingSession,
     insertSession,
     markSessionCancelled,
     updatePackageAfterSessionChange,
