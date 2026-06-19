@@ -16,7 +16,7 @@ const createTrainer = async (req, res, next) => {
     try {
         const parsedBody = trainerSchema.parse(req.body);
         const fileBuffer = req.file ? req.file.buffer : null;
-        if (req.file) imageSchema.parse(req.file);
+        if (req.file) imageSchema.parse({ image: req.file });
 
         const trainer = await service.addTrainer(parsedBody, fileBuffer);
         res.success(trainer, 'Trainer created successfully', 201);
@@ -50,7 +50,7 @@ const updateTrainer = async (req, res, next) => {
         const { trainerId } = trainerIdParamSchema.parse(req.params);
         const parsedBody = updateTrainerSchema.parse(req.body);
         const fileBuffer = req.file ? req.file.buffer : null;
-        if (req.file) imageSchema.parse(req.file);
+        if (req.file) imageSchema.parse({ image: req.file });
 
         const trainer = await service.updateTrainer(trainerId, parsedBody, fileBuffer);
         res.success(trainer, 'Trainer updated successfully');

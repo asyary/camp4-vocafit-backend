@@ -6,7 +6,7 @@ const createNews = async (req, res, next) => {
     try {
         const parsedBody = newsSchema.parse(req.body);
         const fileBuffer = req.file ? req.file.buffer : null;
-        if (req.file) imageSchema.parse(req.file);
+        if (req.file) imageSchema.parse({ image: req.file });
 
         const news = await service.addNews({ ...parsedBody, authorId: req.user.id }, fileBuffer);
         res.success(news, 'News created successfully', 201);
@@ -19,7 +19,7 @@ const updateNews = async (req, res, next) => {
     try {
         const parsedBody = newsSchema.partial().parse(req.body);
         const fileBuffer = req.file ? req.file.buffer : null;
-        if (req.file) imageSchema.parse(req.file);
+        if (req.file) imageSchema.parse({ image: req.file });
 
         const news = await service.editNews(req.params.id, parsedBody, fileBuffer);
         if (!news) {
