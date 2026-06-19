@@ -2,13 +2,36 @@
 const { snap } = require('../../config/midtrans');
 const repository = require('./transaction.repository');
 const crypto = require('crypto');
-const { queueOrderInvoiceEmail, queuePaymentReceiptEmail } = require('../../utils/email-queue.util');
+const { queueOrderInvoiceEmail, queuePaymentReceiptEmail, queueTrainerBookingPaidEmail } = require('../../utils/email-queue.util');
 const { sendTransactionNotification } = require('../notifications/notifications.service');
 const { withProfileImageThumb } = require('../../utils/image.util');
 
 const MIDTRANS_SUCCESS_STATUSES = new Set(['capture', 'settlement']);
 const MIDTRANS_FAILURE_STATUSES = new Set(['deny', 'expire', 'cancel']);
 const MIDTRANS_REVERSAL_STATUSES = new Set(['refund', 'partial_refund', 'chargeback']);
+
+const sendTrainerBookingPaidNotification = async (transaction) => {
+    try {
+        const notifData = await repository.getTrainerNotificationData(transaction);
+        if (!notifData) return;
+
+        await queueTrainerBookingPaidEmail({
+            trainerEmail: notifData.trainer.email,
+            trainerName: notifData.trainer.name,
+            packageName: notifData.catalog.name,
+            sessionCount: notifData.catalog.session_count,
+            expiresAt: notifData.expiresAt,
+            participants: notifData.participants.map((p) => ({
+                name: p.full_name,
+                email: p.email,
+                phoneNumber: p.phone_number,
+                profileImageUrl: p.profile_image_url,
+            })),
+        });
+    } catch (error) {
+        console.error('Failed to queue trainer booking paid email:', error.message || error);
+    }
+};
 
 const normalizeEmailList = (emails = []) => Array.from(
     new Set(
@@ -314,6 +337,8 @@ const confirmCashPayment = async (transactionId, status) => {
             console.error('Failed to send receipt email:', error.message || error);
         }
 
+        sendTrainerBookingPaidNotification(transaction);
+
         sendTransactionNotification({
             userId: transaction.user_id,
             type: 'TRANSACTION_SUCCESS',
@@ -397,6 +422,8 @@ const handleMidtransWebhook = async (notificationPayload) => {
             } catch (error) {
                 console.error('Failed to send receipt email:', error.message || error);
             }
+
+            sendTrainerBookingPaidNotification(transaction);
 
             sendTransactionNotification({
                 userId: transaction.user_id,

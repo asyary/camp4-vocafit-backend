@@ -560,9 +560,187 @@ const buildReceiptPdf = async ({
     doc.fontSize(9).fillColor('#5a658f').text(`Support: ${SUPPORT_EMAIL}`);
 });
 
+const sendTrainerBookingPaidEmail = async ({ trainerEmail, trainerName, packageName, sessionCount, expiresAt, participants }) => {
+	const safeName = escapeHtml(trainerName);
+	const safePackage = escapeHtml(packageName);
+	const participantCount = Array.isArray(participants) ? participants.length : 0;
+
+	const participantCards = (Array.isArray(participants) ? participants : []).map((p) => {
+		const safePName = escapeHtml(p.name || '-');
+		const safePEmail = escapeHtml(p.email || '-');
+		const safePPhone = escapeHtml(p.phoneNumber || '-');
+		const avatarUrl = p.profileImageUrl || '';
+		const avatarHtml = avatarUrl
+			? `<img src="${avatarUrl}" width="56" height="56" alt="${safePName}" style="border-radius:50%;object-fit:cover;display:block;border:2px solid #e0e6ff;" />`
+			: `<div style="width:56px;height:56px;border-radius:50%;background:#c7d2fe;display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:700;color:#060771;">${escapeHtml((p.name || '?')[0].toUpperCase())}</div>`;
+
+		return `
+			<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:10px;border:1px solid #e0e6ff;border-radius:10px;overflow:hidden;">
+				<tr>
+					<td style="padding:12px;width:60px;vertical-align:top;">${avatarHtml}</td>
+					<td style="padding:12px 12px 12px 4px;vertical-align:top;">
+						<p style="margin:0 0 2px;font-weight:600;font-size:14px;color:#060771;">${safePName}</p>
+						<p style="margin:0 0 2px;font-size:13px;color:#2f3a6f;">${safePEmail}</p>
+						<p style="margin:0;font-size:13px;color:#5a658f;">📞 ${safePPhone}</p>
+					</td>
+				</tr>
+			</table>`;
+	}).join('');
+
+	const html = buildEmailTemplate({
+		title: 'New Training Package Booking',
+		preheader: `${participantCount} participant${participantCount !== 1 ? 's' : ''} booked ${packageName} with you.`,
+		bodyHtml: `
+			<p>Hi ${safeName},</p>
+			<p>Great news! A new training package has been booked with you. Here are the details:</p>
+			<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:12px 0;border-collapse:collapse;">
+				<tr>
+					<td style="padding:8px 0;border-bottom:1px solid #eef1f6;">Package</td>
+					<td style="padding:8px 0;border-bottom:1px solid #eef1f6;text-align:right;font-weight:600;">${safePackage}</td>
+				</tr>
+				<tr>
+					<td style="padding:8px 0;border-bottom:1px solid #eef1f6;">Total Sessions</td>
+					<td style="padding:8px 0;border-bottom:1px solid #eef1f6;text-align:right;font-weight:600;">${Number(sessionCount) || 0}</td>
+				</tr>
+				<tr>
+					<td style="padding:8px 0;border-bottom:1px solid #eef1f6;">Participants</td>
+					<td style="padding:8px 0;border-bottom:1px solid #eef1f6;text-align:right;font-weight:600;">${participantCount}</td>
+				</tr>
+				<tr>
+					<td style="padding:8px 0;">Expires On</td>
+					<td style="padding:8px 0;text-align:right;font-weight:600;">${formatDateTime(expiresAt)}</td>
+				</tr>
+			</table>
+			<p style="margin:16px 0 8px;font-weight:600;color:#060771;">Participant${participantCount !== 1 ? 's' : ''}:</p>
+			${participantCards}
+		`,
+	});
+
+	const participantNames = (Array.isArray(participants) ? participants : []).map((p) => p.name || p.email).join(', ');
+
+	try {
+		await transporter.sendMail({
+			from: EMAIL_FROM,
+			to: trainerEmail,
+			subject: `New Booking: ${packageName}`,
+			html,
+			text: `Hi ${trainerName},\n\nA new training package has been booked with you.\n\nPackage: ${packageName}\nTotal Sessions: ${sessionCount}\nParticipants (${participantCount}): ${participantNames}\nExpires On: ${formatDateTime(expiresAt)}\n`,
+		});
+	} catch (error) {
+		console.error('Failed to send trainer booking paid email:', error.message || error);
+		throw error;
+	}
+};
+
+const sendTrainerSessionBookedEmail = async ({ trainerEmail, trainerName, sessionStart, sessionEnd, bookedByName, bookedByEmail, packageName }) => {
+	const safeName = escapeHtml(trainerName);
+	const safeBooker = escapeHtml(bookedByName);
+	const safeBookerEmail = escapeHtml(bookedByEmail);
+	const safePackage = escapeHtml(packageName);
+
+	const html = buildEmailTemplate({
+		title: 'New Session Booked',
+		preheader: `${bookedByName} booked a session with you.`,
+		bodyHtml: `
+			<p>Hi ${safeName},</p>
+			<p>A new training session has been booked with you:</p>
+			<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:12px 0;border-collapse:collapse;">
+				<tr>
+					<td style="padding:8px 0;border-bottom:1px solid #eef1f6;">Package</td>
+					<td style="padding:8px 0;border-bottom:1px solid #eef1f6;text-align:right;font-weight:600;">${safePackage}</td>
+				</tr>
+				<tr>
+					<td style="padding:8px 0;border-bottom:1px solid #eef1f6;">Session Start</td>
+					<td style="padding:8px 0;border-bottom:1px solid #eef1f6;text-align:right;font-weight:600;">${formatDateTime(sessionStart)}</td>
+				</tr>
+				<tr>
+					<td style="padding:8px 0;border-bottom:1px solid #eef1f6;">Session End</td>
+					<td style="padding:8px 0;border-bottom:1px solid #eef1f6;text-align:right;font-weight:600;">${formatDateTime(sessionEnd)}</td>
+				</tr>
+				<tr>
+					<td style="padding:8px 0;">Booked By</td>
+					<td style="padding:8px 0;text-align:right;font-weight:600;">${safeBooker} (${safeBookerEmail})</td>
+				</tr>
+			</table>
+			<p style="margin-top:12px;font-size:13px;color:#5a658f;">Please make sure you are available at the scheduled time.</p>
+		`,
+	});
+
+	try {
+		await transporter.sendMail({
+			from: EMAIL_FROM,
+			to: trainerEmail,
+			subject: `New Session Booked – ${formatDateTime(sessionStart)}`,
+			html,
+			text: `Hi ${trainerName},\n\nA new session has been booked with you.\n\nPackage: ${packageName}\nSession: ${formatDateTime(sessionStart)} – ${formatDateTime(sessionEnd)}\nBooked By: ${bookedByName} (${bookedByEmail})\n`,
+		});
+	} catch (error) {
+		console.error('Failed to send trainer session booked email:', error.message || error);
+		throw error;
+	}
+};
+
+const sendTrainerSessionCancelledEmail = async ({ trainerEmail, trainerName, sessionStart, sessionEnd, cancelledByName, cancelledByRole, cancelReason, packageName }) => {
+	const safeName = escapeHtml(trainerName);
+	const safeCanceller = escapeHtml(cancelledByName);
+	const safePackage = escapeHtml(packageName);
+	const roleLabel = cancelledByRole === 'pengurus' ? 'Admin' : 'Member';
+	const reasonHtml = cancelReason
+		? `<tr>
+				<td style="padding:8px 0;">Reason</td>
+				<td style="padding:8px 0;text-align:right;font-weight:600;">${escapeHtml(cancelReason)}</td>
+			</tr>`
+		: '';
+
+	const html = buildEmailTemplate({
+		title: 'Session Cancelled',
+		preheader: `A session on ${formatDateTime(sessionStart)} has been cancelled.`,
+		bodyHtml: `
+			<p>Hi ${safeName},</p>
+			<p>A training session with you has been cancelled. Here are the details:</p>
+			<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:12px 0;border-collapse:collapse;">
+				<tr>
+					<td style="padding:8px 0;border-bottom:1px solid #eef1f6;">Package</td>
+					<td style="padding:8px 0;border-bottom:1px solid #eef1f6;text-align:right;font-weight:600;">${safePackage}</td>
+				</tr>
+				<tr>
+					<td style="padding:8px 0;border-bottom:1px solid #eef1f6;">Session Start</td>
+					<td style="padding:8px 0;border-bottom:1px solid #eef1f6;text-align:right;font-weight:600;">${formatDateTime(sessionStart)}</td>
+				</tr>
+				<tr>
+					<td style="padding:8px 0;border-bottom:1px solid #eef1f6;">Session End</td>
+					<td style="padding:8px 0;border-bottom:1px solid #eef1f6;text-align:right;font-weight:600;">${formatDateTime(sessionEnd)}</td>
+				</tr>
+				<tr>
+					<td style="padding:8px 0;border-bottom:1px solid #eef1f6;">Cancelled By</td>
+					<td style="padding:8px 0;border-bottom:1px solid #eef1f6;text-align:right;font-weight:600;">${safeCanceller} (${escapeHtml(roleLabel)})</td>
+				</tr>
+				${reasonHtml}
+			</table>
+			<p style="margin-top:12px;font-size:13px;color:#5a658f;">The session slot has been freed up and is now available for rebooking.</p>
+		`,
+	});
+
+	try {
+		await transporter.sendMail({
+			from: EMAIL_FROM,
+			to: trainerEmail,
+			subject: `Session Cancelled – ${formatDateTime(sessionStart)}`,
+			html,
+			text: `Hi ${trainerName},\n\nA session has been cancelled.\n\nPackage: ${packageName}\nSession: ${formatDateTime(sessionStart)} – ${formatDateTime(sessionEnd)}\nCancelled By: ${cancelledByName} (${roleLabel})${cancelReason ? `\nReason: ${cancelReason}` : ''}\n`,
+		});
+	} catch (error) {
+		console.error('Failed to send trainer session cancelled email:', error.message || error);
+		throw error;
+	}
+};
+
 module.exports = {
         sendVerificationEmail,
         sendPasswordResetOtpEmail,
         sendOrderInvoiceEmail,
         sendPaymentReceiptEmail,
+        sendTrainerBookingPaidEmail,
+        sendTrainerSessionBookedEmail,
+        sendTrainerSessionCancelledEmail,
 };

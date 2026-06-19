@@ -5,6 +5,9 @@ const {
     sendPasswordResetOtpEmail,
     sendOrderInvoiceEmail,
     sendPaymentReceiptEmail,
+    sendTrainerBookingPaidEmail,
+    sendTrainerSessionBookedEmail,
+    sendTrainerSessionCancelledEmail,
 } = require('./email.util');
 
 const EMAIL_QUEUE_KEY = 'email:queue';
@@ -17,6 +20,9 @@ const EMAIL_JOB_HANDLERS = {
     password_reset_otp: (payload) => sendPasswordResetOtpEmail(payload.to, payload.name, payload.otp),
     order_invoice: (payload) => sendOrderInvoiceEmail(payload),
     payment_receipt: (payload) => sendPaymentReceiptEmail(payload),
+    trainer_booking_paid: (payload) => sendTrainerBookingPaidEmail(payload),
+    trainer_session_booked: (payload) => sendTrainerSessionBookedEmail(payload),
+    trainer_session_cancelled: (payload) => sendTrainerSessionCancelledEmail(payload),
 };
 
 let workerStarted = false;
@@ -41,6 +47,9 @@ const queueVerificationEmail = (to, name, token) => enqueueEmail('verification',
 const queuePasswordResetOtpEmail = (to, name, otp) => enqueueEmail('password_reset_otp', { to, name, otp });
 const queueOrderInvoiceEmail = (payload) => enqueueEmail('order_invoice', payload);
 const queuePaymentReceiptEmail = (payload) => enqueueEmail('payment_receipt', payload);
+const queueTrainerBookingPaidEmail = (payload) => enqueueEmail('trainer_booking_paid', payload);
+const queueTrainerSessionBookedEmail = (payload) => enqueueEmail('trainer_session_booked', payload);
+const queueTrainerSessionCancelledEmail = (payload) => enqueueEmail('trainer_session_cancelled', payload);
 
 const requeueProcessingJobs = async () => {
     const pendingJobs = await redisClient.lRange(EMAIL_QUEUE_PROCESSING_KEY, 0, -1);
@@ -137,5 +146,8 @@ module.exports = {
     queuePasswordResetOtpEmail,
     queueOrderInvoiceEmail,
     queuePaymentReceiptEmail,
+    queueTrainerBookingPaidEmail,
+    queueTrainerSessionBookedEmail,
+    queueTrainerSessionCancelledEmail,
     startEmailQueueWorker,
 };

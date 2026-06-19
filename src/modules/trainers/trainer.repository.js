@@ -721,6 +721,37 @@ const getMySessionsAsBooker = async (userId, { limit, offset, startDate, endDate
     return { rows, totalCount: countRows[0].total };
 };
 
+const getSessionNotificationData = async (sessionId, executor = db) => {
+    const { rows } = await executor.query(
+        `SELECT ts.id AS session_id,
+                ts.start_time,
+                ts.end_time,
+                ts.booked_by_user_id,
+                t.id AS trainer_id,
+                t.name AS trainer_name,
+                t.email AS trainer_email,
+                u.full_name AS booked_by_name,
+                u.email AS booked_by_email,
+                c.name AS package_name
+         FROM trainer_sessions ts
+         JOIN trainer_packages tp ON tp.id = ts.package_id
+         JOIN trainers t ON t.id = ts.trainer_id
+         JOIN pricing_catalog c ON c.code = tp.catalog_code
+         LEFT JOIN users u ON u.id = ts.booked_by_user_id
+         WHERE ts.id = $1`,
+        [sessionId]
+    );
+    return rows[0] || null;
+};
+
+const getUserBasicInfo = async (userId, executor = db) => {
+    const { rows } = await executor.query(
+        `SELECT id, full_name, email FROM users WHERE id = $1`,
+        [userId]
+    );
+    return rows[0] || null;
+};
+
 module.exports = {
     normalizeEmailList,
     runInTransaction,
@@ -754,4 +785,6 @@ module.exports = {
     getSessionsByTrainerId,
     isMemberOfTrainerPackage,
     getMySessionsAsBooker,
+    getSessionNotificationData,
+    getUserBasicInfo,
 };

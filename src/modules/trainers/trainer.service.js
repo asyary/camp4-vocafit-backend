@@ -1,5 +1,6 @@
 const repository = require('./trainer.repository');
 const { uploadToCloudinary } = require('../../utils/cloudinary.util');
+const { queueTrainerSessionBookedEmail, queueTrainerSessionCancelledEmail } = require('../../utils/email-queue.util');
 
 const createError = (message, status) => {
     const error = new Error(message);
@@ -85,7 +86,7 @@ const getPackageDetails = async (userId, role, packageId) => {
 };
 
 const bookSession = async (userId, packageId, payload) => {
-    return await repository.runInTransaction(async (client) => {
+    const result = await repository.runInTransaction(async (client) => {
         // 1. Lock and validate package
         const pkg = await repository.getPackageForUpdate(client, packageId);
         if (!pkg) {
@@ -144,10 +145,30 @@ const bookSession = async (userId, packageId, payload) => {
 
         return { session, package: updatedPackage };
     });
+
+    // Queue trainer email notification (fire-and-forget, outside the DB transaction)
+    try {
+        const notifData = await repository.getSessionNotificationData(result.session.id);
+        if (notifData) {
+            await queueTrainerSessionBookedEmail({
+                trainerEmail: notifData.trainer_email,
+                trainerName: notifData.trainer_name,
+                sessionStart: notifData.start_time,
+                sessionEnd: notifData.end_time,
+                bookedByName: notifData.booked_by_name,
+                bookedByEmail: notifData.booked_by_email,
+                packageName: notifData.package_name,
+            });
+        }
+    } catch (error) {
+        console.error('Failed to queue trainer session booked email:', error.message || error);
+    }
+
+    return result;
 };
 
 const cancelSession = async (userId, role, sessionId, payload) => {
-    return await repository.runInTransaction(async (client) => {
+    const result = await repository.runInTransaction(async (client) => {
         // 1. Lock and fetch session with package info
         const session = await repository.getSessionWithPackageForUpdate(client, sessionId);
         if (!session) {
@@ -193,6 +214,28 @@ const cancelSession = async (userId, role, sessionId, payload) => {
 
         return { session: updatedSession, package: updatedPackage };
     });
+
+    // Queue trainer email notification (fire-and-forget, outside the DB transaction)
+    try {
+        const notifData = await repository.getSessionNotificationData(result.session.id);
+        const cancellerUser = await repository.getUserBasicInfo(userId);
+        if (notifData) {
+            await queueTrainerSessionCancelledEmail({
+                trainerEmail: notifData.trainer_email,
+                trainerName: notifData.trainer_name,
+                sessionStart: notifData.start_time,
+                sessionEnd: notifData.end_time,
+                cancelledByName: cancellerUser?.full_name || 'Unknown',
+                cancelledByRole: role,
+                cancelReason: payload.reason || null,
+                packageName: notifData.package_name,
+            });
+        }
+    } catch (error) {
+        console.error('Failed to queue trainer session cancelled email:', error.message || error);
+    }
+
+    return result;
 };
 
 const mapSessionRow = (row, includeUser) => {

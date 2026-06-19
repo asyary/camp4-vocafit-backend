@@ -639,6 +639,62 @@ const processRefundedPayment = async (transactionId) => {
     });
 };
 
+const getTrainerNotificationData = async (transaction) => {
+    if (!transaction.trainer_id) return null;
+
+    const trainerId = transaction.trainer_id;
+    const transactionType = transaction.transaction_type || transaction.catalog_code;
+
+    const [trainerResult, catalogResult] = await Promise.all([
+        db.query(
+            `SELECT id, name, email, phone_number
+             FROM trainers
+             WHERE id = $1`,
+            [trainerId]
+        ),
+        db.query(
+            `SELECT code, name, session_count, duration_days, group_size
+             FROM pricing_catalog
+             WHERE code = $1`,
+            [transactionType]
+        ),
+    ]);
+
+    const trainer = trainerResult.rows[0];
+    const catalog = catalogResult.rows[0];
+    if (!trainer || !catalog) return null;
+
+    // Fetch participant details from the trainer_participant_emails stored in the transaction
+    const participantEmails = Array.isArray(transaction.trainer_participant_emails)
+        ? transaction.trainer_participant_emails
+        : [];
+
+    let participants = [];
+    if (participantEmails.length > 0) {
+        const normalized = participantEmails.map((e) => String(e || '').trim().toLowerCase()).filter(Boolean);
+        const { rows } = await db.query(
+            `SELECT u.full_name, u.email, u.phone_number, u.profile_image_url
+             FROM users u
+             WHERE LOWER(u.email) = ANY($1::text[])`,
+            [normalized]
+        );
+        participants = rows;
+    }
+
+    // Calculate expiry date
+    const durationDays = Number(catalog.duration_days) || 30;
+    const expiresAt = new Date();
+    expiresAt.setDate(expiresAt.getDate() + durationDays);
+    expiresAt.setHours(23, 59, 59, 999);
+
+    return {
+        trainer,
+        catalog,
+        participants,
+        expiresAt,
+    };
+};
+
 module.exports = { 
     getUserForTransaction, 
     getActiveOrderByUserId,
@@ -660,4 +716,5 @@ module.exports = {
     ,hasActiveMembership
     ,getUsersByEmails
     ,getActiveTrainerPackageConflicts
+    ,getTrainerNotificationData
 };
